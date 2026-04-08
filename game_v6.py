@@ -21,7 +21,79 @@
 import sys
 import time
 import random
+from dataclasses import dataclass, field
 
+
+# ============================================================
+# CANONICAL IDS / CONSTANTS (single source of truth)
+# ============================================================
+
+class StoryFlag:
+    FOUND_MELS_WARNING = 'found_mels_warning'
+    KNOWS_ABOUT_COMPOUND = 'knows_about_compound'
+    KNOWS_PROTAGONIST_IS_SUBJECT_01 = 'knows_protagonist_is_subject_01'
+    KNOWS_BARBADOS_SELF_INJECTED = 'knows_barbados_self_injected'
+    FOUND_KRISTYS_WARNING = 'found_kristys_warning'
+    KNOWS_KEY_IN_STUDY = 'knows_key_in_study'
+    HEARD_DANIELS_WARNING = 'heard_daniels_warning'
+    READ_FULL_JOURNAL = 'read_full_journal'
+    READ_MEDICAL_FILE = 'read_medical_file'
+    KNOWS_FULL_TRUTH = 'knows_full_truth'
+    KNOWS_COMPOUND_IRREVERSIBLE = 'knows_compound_irreversible'
+    FOUND_SURVIVOR_NOTE = 'found_survivor_note'
+    HAS_COMMS = 'has_comms'
+    QUARANTINE_OPENED = 'quarantine_opened'
+    GENERATOR_STARTED = 'generator_started'
+    BATHROOM_ZOMBIE_RESOLVED = 'bathroom_zombie_resolved'
+    BATHROOM_ZOMBIE_MERCY = 'bathroom_zombie_mercy'
+    BATHROOM_ZOMBIE_LEFT = 'bathroom_zombie_left'
+    SHOWED_MERCY = 'showed_mercy'
+    ARMCHAIR_SEARCHED = 'armchair_searched'
+    CLOSET_ZOMBIE_RESOLVED = 'closet_zombie_resolved'
+    LIVING_ROOM_ZOMBIE_CLEARED = 'living_room_zombie_cleared'
+    ENTRANCE_HALL_ZOMBIE_CLEARED = 'entrance_hall_zombie_cleared'
+    KITCHEN_ZOMBIE_CLEARED = 'kitchen_zombie_cleared'
+    STUDY_ZOMBIE_CLEARED = 'study_zombie_cleared'
+    LAB_ZOMBIE_CLEARED = 'lab_zombie_cleared'
+    HEARD_SCRATCHING = 'heard_scratching'
+    HEARD_FIRST_SIGNAL = 'heard_first_signal'
+    HEARD_MAYA_BROADCAST = 'heard_maya_broadcast'
+    MAYA_RESPONDED = 'maya_responded'
+    TOLD_MAYA_CLEAN = 'told_maya_clean'
+    TOLD_MAYA_UNKNOWN = 'told_maya_unknown'
+    KNOWS_CAMP_LOCATION = 'knows_camp_location'
+
+
+class StatusEffect:
+    BLINDED = 'blinded'
+    INFECTED = 'infected'
+    STRESSED = 'stressed'
+    STEADIED = 'steadied'
+    SUPPRESSED = 'suppressed'
+
+
+class ItemId:
+    FLASHLIGHT = 'flashlight'
+    FIRST_AID_KIT = 'first aid kit'
+    FOOD_SUPPLIES = 'food supplies'
+    ENERGY_BARS = 'energy bars'
+    WATER_BOTTLE = 'water bottle'
+    BOTTLED_WATER = 'bottled water'
+    WALKIE_TALKIE = 'walkie-talkie'
+    QUARANTINE_KEY = 'quarantine key'
+
+
+ITEM_ALIASES = {
+    ItemId.FLASHLIGHT: ItemId.FLASHLIGHT,
+    ItemId.FIRST_AID_KIT: ItemId.FIRST_AID_KIT,
+    ItemId.FOOD_SUPPLIES: ItemId.FOOD_SUPPLIES,
+    ItemId.ENERGY_BARS: ItemId.ENERGY_BARS,
+    'energy bar': ItemId.ENERGY_BARS,
+    ItemId.WATER_BOTTLE: ItemId.WATER_BOTTLE,
+    ItemId.BOTTLED_WATER: ItemId.BOTTLED_WATER,
+    ItemId.WALKIE_TALKIE: ItemId.WALKIE_TALKIE,
+    ItemId.QUARANTINE_KEY: ItemId.QUARANTINE_KEY,
+}
 
 # ============================================================
 # DISPLAY UTILITIES
@@ -102,6 +174,12 @@ class Player:
         if entry not in self.notes.get(category, []):
             self.notes.setdefault(category, []).append(entry)
 
+    def has_flag(self, flag_name):
+        return bool(self.story_flags.get(flag_name, False))
+
+    def set_flag(self, flag_name, value=True):
+        self.story_flags[flag_name] = value
+
     def unlock_substat(self, name, value=1):
         if name in self.substats:
             self.substats[name]['unlocked'] = True
@@ -110,11 +188,18 @@ class Player:
             self.substats[name] = {'value': value, 'unlocked': True}
 
     def has_item(self, item_name):
-        return item_name.lower() in [i.lower() for i in self.inventory]
+        wanted = ITEM_ALIASES.get(str(item_name).lower(), str(item_name).lower())
+        for item in self.inventory:
+            key = ITEM_ALIASES.get(str(item).lower(), str(item).lower())
+            if key == wanted:
+                return True
+        return False
 
     def remove_item(self, item_name):
+        wanted = ITEM_ALIASES.get(str(item_name).lower(), str(item_name).lower())
         for item in self.inventory:
-            if item.lower() == item_name.lower():
+            key = ITEM_ALIASES.get(str(item).lower(), str(item).lower())
+            if key == wanted:
                 self.inventory.remove(item)
                 return True
         return False
@@ -175,7 +260,7 @@ class Move:
         self.move_type    = move_type
         self.power        = power
         self.accuracy     = accuracy
-        self.effect       = effect          # 'blinded','infected','stressed','steadied','suppressed'
+        self.effect       = effect          # StatusEffect.BLINDED,StatusEffect.INFECTED,StatusEffect.STRESSED,StatusEffect.STEADIED,StatusEffect.SUPPRESSED
         self.effect_chance = effect_chance
         self.priority     = priority        # higher = goes first
         self.description  = description
@@ -196,6 +281,20 @@ class Enemy:
         self.guarded    = False
 
 
+def make_enemy(name, enemy_type, hp, attack, defense, speed, moves, is_boss=False):
+    """Small factory helper to reduce repeated Enemy(...) boilerplate."""
+    return Enemy(
+        name=name,
+        enemy_type=enemy_type,
+        hp=hp,
+        attack=attack,
+        defense=defense,
+        speed=speed,
+        moves=moves,
+        is_boss=is_boss,
+    )
+
+
 # ──────────────────────────────────────
 # Player move definitions
 # ──────────────────────────────────────
@@ -207,17 +306,17 @@ PLAYER_MOVES = {
     ),
     'guard': Move(
         'Guard', 'Stealth', 0, 1.00,
-        effect='steadied', effect_chance=1.0,
+        effect=StatusEffect.STEADIED, effect_chance=1.0,
         description='Reduce next hit by 40%.'
     ),
     'flash': Move(
         'Flash', 'Psyche', 25, 0.85,
-        effect='blinded', effect_chance=0.40,
+        effect=StatusEffect.BLINDED, effect_chance=0.40,
         description='Shine the light directly in its eyes.'
     ),
     'static_pulse': Move(
         'Static Pulse', 'Psyche', 35, 0.80,
-        effect='stressed', effect_chance=0.30,
+        effect=StatusEffect.STRESSED, effect_chance=0.30,
         description='Psychic surge. May cause stress.'
     ),
     'alpha_sense': Move(
@@ -226,7 +325,7 @@ PLAYER_MOVES = {
     ),
     'override': Move(
         'Override', 'Alpha', 0, 0.85,
-        effect='suppressed', effect_chance=1.0,
+        effect=StatusEffect.SUPPRESSED, effect_chance=1.0,
         description='Suppress enemy next action.'
     ),
 }
@@ -236,7 +335,7 @@ def get_available_moves(player):
     """Return list of move keys the player can currently use."""
     aa = player.hidden_stats['Alpha Awareness']
     moves = ['strike', 'guard']
-    if player.has_item('flashlight'):
+    if player.has_item(ItemId.FLASHLIGHT):
         moves.append('flash')
     if aa >= 3:
         moves.append('static_pulse')
@@ -252,7 +351,7 @@ def get_available_moves(player):
 # ──────────────────────────────────────
 
 def make_standard_zombie():
-    return Enemy(
+    return make_enemy(
         name='Standard Zombie',
         enemy_type='Brute',
         hp=30, attack=8, defense=5, speed=4,
@@ -260,14 +359,14 @@ def make_standard_zombie():
             Move('Shamble', 'Brute', 20, 0.80,
                  description='A lurching, clumsy attack.'),
             Move('Bite',    'Bio',   15, 0.75,
-                 effect='infected', effect_chance=0.20,
+                 effect=StatusEffect.INFECTED, effect_chance=0.20,
                  description='Infected wound — may transmit.'),
         ]
     )
 
 
 def make_patient_zombie():
-    return Enemy(
+    return make_enemy(
         name='Patient Zero',
         enemy_type='Bio',
         hp=35, attack=9, defense=5, speed=3,
@@ -275,14 +374,14 @@ def make_patient_zombie():
             Move('Scratch', 'Bio',  15, 0.90,
                  description='A raking claw strike.'),
             Move('Infect',  'Bio',  10, 0.70,
-                 effect='infected', effect_chance=1.0,
+                 effect=StatusEffect.INFECTED, effect_chance=1.0,
                  description='Guaranteed infection if it lands.'),
         ]
     )
 
 
 def make_barbados():
-    return Enemy(
+    return make_enemy(
         name='Dr. Barbados',
         enemy_type='Alpha',
         hp=80, attack=20, defense=8, speed=9,
@@ -290,7 +389,7 @@ def make_barbados():
             Move('Crush',    'Brute',  35, 0.90,
                  description='A devastating physical blow.'),
             Move('Fracture', 'Psyche', 30, 0.85,
-                 effect='stressed', effect_chance=1.0,
+                 effect=StatusEffect.STRESSED, effect_chance=1.0,
                  description='Psychic assault. Causes stress.'),
             Move('Lunge',    'Brute',  50, 0.90,
                  priority=2,
@@ -302,7 +401,7 @@ def make_barbados():
 
 def make_entrance_zombie():
     """Brute zombie blocking the Entrance Hall — first combat encounter."""
-    return Enemy(
+    return make_enemy(
         name='Shambler',
         enemy_type='Brute',
         hp=28, attack=8, defense=5, speed=4,
@@ -310,7 +409,7 @@ def make_entrance_zombie():
             Move('Shove',  'Brute', 18, 0.85,
                  description='Knocks you back hard.'),
             Move('Bite',   'Bio',   15, 0.75,
-                 effect='infected', effect_chance=0.20,
+                 effect=StatusEffect.INFECTED, effect_chance=0.20,
                  description='Infects the wound.'),
         ]
     )
@@ -318,7 +417,7 @@ def make_entrance_zombie():
 
 def make_kitchen_zombie():
     """Scavenger zombie picked up in the kitchen."""
-    return Enemy(
+    return make_enemy(
         name='Scavenger',
         enemy_type='Brute',
         hp=30, attack=8, defense=5, speed=5,
@@ -326,7 +425,7 @@ def make_kitchen_zombie():
             Move('Shamble', 'Brute', 20, 0.80,
                  description='Lurching attack.'),
             Move('Bite',    'Bio',   15, 0.75,
-                 effect='infected', effect_chance=0.20,
+                 effect=StatusEffect.INFECTED, effect_chance=0.20,
                  description='Infects the wound.'),
         ]
     )
@@ -334,7 +433,7 @@ def make_kitchen_zombie():
 
 def make_study_zombie():
     """Brute zombie hunched over the research papers."""
-    return Enemy(
+    return make_enemy(
         name='Researcher',
         enemy_type='Brute',
         hp=30, attack=9, defense=5, speed=3,
@@ -342,7 +441,7 @@ def make_study_zombie():
             Move('Shamble', 'Brute', 20, 0.80,
                  description='Slow but relentless.'),
             Move('Bite',    'Bio',   14, 0.70,
-                 effect='infected', effect_chance=0.15,
+                 effect=StatusEffect.INFECTED, effect_chance=0.15,
                  description='A ragged bite.'),
         ]
     )
@@ -350,7 +449,7 @@ def make_study_zombie():
 
 def make_closet_zombie():
     """Burst zombie from Master Bedroom closet — priority first-turn lunge."""
-    return Enemy(
+    return make_enemy(
         name='Closet Zombie',
         enemy_type='Brute',
         hp=22, attack=10, defense=4, speed=8,
@@ -366,13 +465,13 @@ def make_closet_zombie():
 
 def make_lab_tech_zombie():
     """Infected lab technician — Bio type, more dangerous."""
-    return Enemy(
+    return make_enemy(
         name='Lab Technician',
         enemy_type='Bio',
         hp=40, attack=10, defense=6, speed=5,
         moves=[
             Move('Needle',  'Bio',   18, 0.85,
-                 effect='infected', effect_chance=0.35,
+                 effect=StatusEffect.INFECTED, effect_chance=0.35,
                  description='Still has the syringe. May infect.'),
             Move('Scratch', 'Bio',   15, 0.90,
                  description='Raking claw attack.'),
@@ -460,7 +559,7 @@ def choose_player_move(player, enemy):
 
 def choose_enemy_move(enemy):
     """Select an enemy move. Returns None if suppressed."""
-    if 'suppressed' in enemy.statuses:
+    if StatusEffect.SUPPRESSED in enemy.statuses:
         return None
     # Boss uses Lunge (priority=2) when below 30% HP
     if enemy.is_boss and enemy.hp < enemy.max_hp * 0.30:
@@ -477,7 +576,7 @@ def choose_enemy_move(enemy):
 def resolve_player_move(player, enemy, move):
     """Apply player's chosen move to the enemy."""
     # Accuracy check (blinded reduces acc by 40%)
-    acc = move.accuracy * (0.60 if 'blinded' in player.combat_statuses else 1.0)
+    acc = move.accuracy * (0.60 if StatusEffect.BLINDED in player.combat_statuses else 1.0)
     if random.random() > acc:
         print(f"  Your {move.name} missed!")
         return
@@ -485,15 +584,15 @@ def resolve_player_move(player, enemy, move):
     type_mult = TYPE_CHART[move.move_type][enemy.enemy_type]
 
     # Guard — defensive buff on self
-    if move.effect == 'steadied' and move.power == 0:
-        player.combat_statuses['steadied'] = 1
+    if move.effect == StatusEffect.STEADIED and move.power == 0:
+        player.combat_statuses[StatusEffect.STEADIED] = 1
         print("  You take a defensive stance. Next hit reduced by 40%.")
         return
 
     # Override — suppress enemy
-    if move.effect == 'suppressed' and move.power == 0:
+    if move.effect == StatusEffect.SUPPRESSED and move.power == 0:
         if random.random() <= move.effect_chance:
-            enemy.statuses['suppressed'] = 1
+            enemy.statuses[StatusEffect.SUPPRESSED] = 1
             print(f"  You override {enemy.name}'s next action — it freezes.")
         else:
             print(f"  Override failed. {enemy.name} resists.")
@@ -502,7 +601,7 @@ def resolve_player_move(player, enemy, move):
     # Damage moves
     if move.power > 0:
         # Stressed player deals 75% damage
-        atk = int(player.combat_attack * 0.75) if 'stressed' in player.combat_statuses else player.combat_attack
+        atk = int(player.combat_attack * 0.75) if StatusEffect.STRESSED in player.combat_statuses else player.combat_attack
         damage = calc_damage(atk, move.power, enemy.defense, type_mult)
 
         # Enemy's guard reduces incoming damage
@@ -521,7 +620,7 @@ def resolve_player_move(player, enemy, move):
         print(f"  {move.name} hits for {damage} damage.{eff}")
 
         # Secondary status effect on enemy
-        if move.effect and move.effect != 'steadied' and random.random() <= move.effect_chance:
+        if move.effect and move.effect != StatusEffect.STEADIED and random.random() <= move.effect_chance:
             if move.effect not in enemy.statuses:
                 enemy.statuses[move.effect] = 3
                 print(f"  {enemy.name} is now {move.effect}!")
@@ -532,13 +631,13 @@ def resolve_enemy_move(player, enemy, move):
     if move is None:
         # Suppressed — skip turn and decrement
         print(f"  {enemy.name} hesitates — suppressed!")
-        enemy.statuses['suppressed'] = max(0, enemy.statuses.get('suppressed', 1) - 1)
-        if enemy.statuses['suppressed'] <= 0:
-            del enemy.statuses['suppressed']
+        enemy.statuses[StatusEffect.SUPPRESSED] = max(0, enemy.statuses.get(StatusEffect.SUPPRESSED, 1) - 1)
+        if enemy.statuses[StatusEffect.SUPPRESSED] <= 0:
+            del enemy.statuses[StatusEffect.SUPPRESSED]
         return
 
     # Blinded enemy has reduced accuracy
-    acc = move.accuracy * (0.60 if 'blinded' in enemy.statuses else 1.0)
+    acc = move.accuracy * (0.60 if StatusEffect.BLINDED in enemy.statuses else 1.0)
     if random.random() > acc:
         print(f"  {enemy.name}'s {move.name} missed!")
         return
@@ -547,13 +646,13 @@ def resolve_enemy_move(player, enemy, move):
 
     if move.power > 0:
         # Stressed enemy deals 75% damage
-        atk = int(enemy.attack * 0.75) if 'stressed' in enemy.statuses else enemy.attack
+        atk = int(enemy.attack * 0.75) if StatusEffect.STRESSED in enemy.statuses else enemy.attack
         damage = calc_damage(atk, move.power, player.combat_defense, type_mult)
 
         # Player's steadied status reduces damage
-        if 'steadied' in player.combat_statuses:
+        if StatusEffect.STEADIED in player.combat_statuses:
             damage = int(damage * 0.60)
-            del player.combat_statuses['steadied']
+            del player.combat_statuses[StatusEffect.STEADIED]
             print("  Your guard absorbs some of the impact.")
 
         player.hp = max(0, player.hp - damage)
@@ -580,51 +679,51 @@ def resolve_enemy_move(player, enemy, move):
 def process_status_tick(player, enemy):
     """Tick down status durations and apply DoT effects."""
     # --- Player statuses ---
-    if 'infected' in player.combat_statuses:
+    if StatusEffect.INFECTED in player.combat_statuses:
         player.hp = max(0, player.hp - 3)
-        player.combat_statuses['infected'] -= 1
-        if player.combat_statuses['infected'] <= 0:
-            del player.combat_statuses['infected']
+        player.combat_statuses[StatusEffect.INFECTED] -= 1
+        if player.combat_statuses[StatusEffect.INFECTED] <= 0:
+            del player.combat_statuses[StatusEffect.INFECTED]
             print("  The infection clears.")
         else:
             print(f"  Infected: −3 HP.")
 
     for s in list(player.combat_statuses.keys()):
-        if s == 'infected':
+        if s == StatusEffect.INFECTED:
             continue
         player.combat_statuses[s] -= 1
         if player.combat_statuses[s] <= 0:
             del player.combat_statuses[s]
 
     # --- Enemy statuses ---
-    if 'infected' in enemy.statuses:
+    if StatusEffect.INFECTED in enemy.statuses:
         enemy.hp = max(0, enemy.hp - 3)
-        enemy.statuses['infected'] -= 1
-        if enemy.statuses['infected'] <= 0:
-            del enemy.statuses['infected']
+        enemy.statuses[StatusEffect.INFECTED] -= 1
+        if enemy.statuses[StatusEffect.INFECTED] <= 0:
+            del enemy.statuses[StatusEffect.INFECTED]
 
     for s in list(enemy.statuses.keys()):
-        if s in ('infected', 'suppressed'):
+        if s in (StatusEffect.INFECTED, StatusEffect.SUPPRESSED):
             continue
         enemy.statuses[s] -= 1
         if enemy.statuses[s] <= 0:
             del enemy.statuses[s]
-            if s == 'blinded':
+            if s == StatusEffect.BLINDED:
                 print(f"  {enemy.name} recovers from blindness.")
-            elif s == 'stressed':
+            elif s == StatusEffect.STRESSED:
                 print(f"  {enemy.name}'s stress fades.")
 
 
 def use_item_in_combat(player):
     """Use a consumable item during combat. Returns True if item was used."""
     usable = []
-    if player.has_item('first aid kit'):
-        usable.append(('first aid kit', 'Restore 20 HP'))
-    for food in ('food supplies', 'energy bars'):
+    if player.has_item(ItemId.FIRST_AID_KIT):
+        usable.append((ItemId.FIRST_AID_KIT, 'Restore 20 HP'))
+    for food in (ItemId.FOOD_SUPPLIES, ItemId.ENERGY_BARS):
         if player.has_item(food):
             usable.append((food, 'Restore 10 HP'))
             break
-    for water in ('water bottle', 'bottled water'):
+    for water in (ItemId.WATER_BOTTLE, ItemId.BOTTLED_WATER):
         if player.has_item(water):
             usable.append((water, 'Restore 5 HP, reduces stress'))
             break
@@ -650,11 +749,11 @@ def use_item_in_combat(player):
             c = int(raw)
             if 1 <= c <= len(usable):
                 item_name, _ = usable[c - 1]
-                if item_name == 'first aid kit':
+                if item_name == ItemId.FIRST_AID_KIT:
                     heal = min(20, player.max_hp - player.hp)
                     player.hp += heal
                     print(f"  You apply the first aid kit. +{heal} HP.")
-                    player.remove_item('first aid kit')
+                    player.remove_item(ItemId.FIRST_AID_KIT)
                 elif 'food' in item_name or 'bar' in item_name or 'bars' in item_name:
                     heal = min(10, player.max_hp - player.hp)
                     player.hp += heal
@@ -913,17 +1012,17 @@ TIMED_EVENTS = [
     (10, "The lights stutter — one quick pulse of darkness. Your pulse spikes with them.",
      None, None),
     (15, "Through the walls — slow. Rhythmic. Scratching.\nFrom somewhere west. Measured. Patient.",
-     None, 'heard_scratching'),
+     None, StoryFlag.HEARD_SCRATCHING),
     (20, "The walkie-talkie crackles once.\nStatic. A voice, barely audible:\n"
          "  '— anyone? If you can hear this —'\nIt cuts out before you can respond.",
-     'walkie-talkie', 'heard_first_signal'),
+     ItemId.WALKIE_TALKIE, StoryFlag.HEARD_FIRST_SIGNAL),
     (28, "A sound from outside. Far away — glass breaking.\nThen nothing.",
      None, None),
     (38, "The walkie-talkie comes alive. Clearer.\nA woman's voice — controlled:\n"
          "  'We have a camp. Northwest of the city. Frequency 7.4.\n"
          "   Don't come alone. Don't come infected.'\n"
          "The transmission repeats twice, then cuts.\n(Type RADIO to respond.)",
-     'walkie-talkie', 'heard_maya_broadcast'),
+     ItemId.WALKIE_TALKIE, StoryFlag.HEARD_MAYA_BROADCAST),
     (50, "The scratching from the west has stopped.\nSomehow that's worse.",
      None, None),
 ]
@@ -943,7 +1042,7 @@ def check_timed_events(player):
             separator()
             if flag:
                 player.story_flags[flag] = True
-            if flag == 'heard_maya_broadcast':
+            if flag == StoryFlag.HEARD_MAYA_BROADCAST:
                 player.add_note('people',
                     "Maya — survivor running a camp ~4km northwest. Frequency 7.4.")
 
@@ -958,60 +1057,60 @@ def get_room_description(room_name, rooms, player):
     addons = []
 
     if room_name == 'Basement':
-        if 'generator_started' in flags:
+        if StoryFlag.GENERATOR_STARTED in flags:
             addons.append(
                 "The generator hums in the alcove. The card reader on the\n"
                 "east lab door glows green — it's powered now."
             )
     elif room_name == 'Entrance Hall':
-        if 'quarantine_opened' in flags:
+        if StoryFlag.QUARANTINE_OPENED in flags:
             addons.append(
                 "The smell from the quarantine room drifts through from the living room."
             )
-        if 'knows_protagonist_is_subject_01' in flags:
+        if StoryFlag.KNOWS_PROTAGONIST_IS_SUBJECT_01 in flags:
             addons.append(
                 "The scratch marks at the base of the front door catch your eye.\n"
                 "Were any of them like you?"
             )
     elif room_name == 'Living Room':
-        if 'found_kristys_warning' in flags and 'quarantine_opened' not in flags:
+        if StoryFlag.FOUND_KRISTYS_WARNING in flags and StoryFlag.QUARANTINE_OPENED not in flags:
             addons.append(
                 "Kristy said the key was in the study.\n"
                 "The quarantine door to the west feels like a countdown."
             )
-        if 'quarantine_opened' in flags:
+        if StoryFlag.QUARANTINE_OPENED in flags:
             addons.append(
                 "The quarantine door stands open to the west.\n"
                 "The smell from inside reaches you here."
             )
     elif room_name == 'Study':
-        if ('knows_about_compound' in flags and
-                'found_mels_warning' in flags and
-                'heard_daniels_warning' in flags):
+        if (StoryFlag.KNOWS_ABOUT_COMPOUND in flags and
+                StoryFlag.FOUND_MELS_WARNING in flags and
+                StoryFlag.HEARD_DANIELS_WARNING in flags):
             addons.append(
                 "You've read enough to understand what happened here.\n"
                 "What was done. What you are."
             )
     elif room_name == 'Master Bedroom':
-        if 'bathroom_zombie_mercy' in flags:
+        if StoryFlag.BATHROOM_ZOMBIE_MERCY in flags:
             addons.append(
                 "The bathroom is silent now. You did what had to be done."
             )
-        if 'read_full_journal' in flags:
+        if StoryFlag.READ_FULL_JOURNAL in flags:
             addons.append(
                 "You understand now why Kristy stayed as long as she did."
             )
     elif room_name == 'Bathroom':
-        if 'bathroom_zombie_mercy' in flags:
+        if StoryFlag.BATHROOM_ZOMBIE_MERCY in flags:
             addons.append(
                 "The figure is gone. The bathtub has a stain it didn't have before."
             )
-        elif 'bathroom_zombie_left' in flags:
+        elif StoryFlag.BATHROOM_ZOMBIE_LEFT in flags:
             addons.append(
                 "It's still there. Still watching the door."
             )
     elif room_name == 'Lab Wing':
-        if 'read_medical_file' in flags:
+        if StoryFlag.READ_MEDICAL_FILE in flags:
             addons.append(
                 "You know what you were when you came in here.\n"
                 "You know what you are when you leave."
@@ -1027,468 +1126,9 @@ def get_room_description(room_name, rooms, player):
 # ============================================================
 
 def build_rooms():
-    return {
-
-        'Basement': {
-            'exits':        {'north': 'Entrance Hall'},
-            'locked_exits': {'east': 'Lab Wing'},
-            'brief': "Cold steel and chemical rot. You woke up here.",
-            'description': (
-                "You are in the Basement Lab.\n"
-                "The air is thick — stale chemicals, dried blood, something rotten.\n"
-                "A cold steel operating table sits in the centre, IV tubes dangling\n"
-                "loose. Nearby, an empty suspension tank looms — reinforced glass fogged,\n"
-                "dark residue clinging to the inside.\n"
-                "A heavy metal door to the east is labelled 'Lab Wing Access' — locked.\n"
-                "Stairs lead north toward the rest of the house."
-            ),
-            'items': {
-                "flashlight":         "A heavy-duty flashlight. Batteries still work.",
-                "mel's notebook":     "A small blood-smeared notebook. Cover reads 'M. Peoples'.",
-                "elias's diary page": "A torn diary page. Bloodstained robe nearby.",
-                "research log":       "A partially burned research log.",
-            },
-            'objects': {
-                "operating table": (
-                    "Cold steel with restraint marks worn into the sides.\n"
-                    "The IV tubes were ripped out, not removed carefully.\n"
-                    "Someone left in a hurry. Or was taken."
-                ),
-                "suspension tank": (
-                    "An empty reinforced glass tank — large enough for a person.\n"
-                    "Dark residue inside. A discoloured ring on the floor beneath.\n"
-                    "Whatever was kept here was removed without being shut down."
-                ),
-                "blood trail": (
-                    "A smear of dried blood leads from the operating table\n"
-                    "toward the far wall and disappears into shadow.\n"
-                    "Whoever left this — it wasn't long ago."
-                ),
-                "lab door": (
-                    "Heavy steel. 'Lab Wing Access.'\n"
-                    "A card reader on the wall beside it — dark. No power.\n"
-                    "The generator could change that."
-                ),
-                "medical cart": (
-                    "Overturned. Scattered syringes. One still has dark,\n"
-                    "viscous residue inside. You don't pick it up."
-                ),
-                "generator": (
-                    "A large diesel generator. Fuel gauge: a quarter tank.\n"
-                    "A pull cord along the right side, stiff from disuse.\n"
-                    "Enough fuel to run. It just needs to be started.\n"
-                    "(Try: USE FLASHLIGHT ON GENERATOR, or START GENERATOR)"
-                ),
-            }
-        },
-
-        'Entrance Hall': {
-            'exits': {
-                'south': 'Basement',
-                'west':  'Parlor',
-                'east':  'Cloakroom',
-                'north': 'Living Room',
-            },
-            'brief': "The front door is barricaded — nailed shut from this side. Not your way out.",
-            'description': (
-                "You are in the Entrance Hall.\n"
-                "A chandelier hangs above — crystals coated in dust and cobwebs.\n"
-                "The front doors are barricaded with planks nailed haphazardly.\n"
-                "Scratch marks at the base of the doors from the inside.\n"
-                "A grand staircase to the right, its railing splintered.\n"
-                "Passages lead west to the parlour, east to a cloakroom, north deeper in."
-            ),
-            'items': {},
-            'objects': {
-                "front door": (
-                    "Heavy wood, barricaded from the inside — thick planks nailed hard.\n"
-                    "Scratch marks at the base: deep, ragged. Fingernails.\n"
-                    "Something tried to get OUT, not in. They didn't make it.\n\n"
-                    "The door is sealed. You'd need a crowbar or something heavy\n"
-                    "to pry the planks loose — and that's if you even want to go out there.\n"
-                    "Through the gap: still, grey light. Shapes in the distance. Slow ones.\n\n"
-                    "This isn't your exit. Not yet."
-                ),
-                "scratch marks": (
-                    "Long ragged gouges at floor level. Multiple sets.\n"
-                    "They all faced the same direction — toward the door. Toward outside.\n"
-                    "None of them made it."
-                ),
-                "chandelier": (
-                    "Once grand. Several crystals missing. It sways faintly\n"
-                    "even though there's no wind you can feel.\n"
-                    "The chain looks old."
-                ),
-                "staircase": (
-                    "Wide stairs. One baluster missing, another cracked.\n"
-                    "Dried blood on the third step — a smear that trails up and stops."
-                ),
-                "bloodstain": (
-                    "A dark stain near the front door. The shape suggests someone\n"
-                    "sat here for a while. Bleeding. Waiting.\n"
-                    "Whatever they were waiting for never came."
-                ),
-            }
-        },
-
-        'Parlor': {
-            'exits': {'east': 'Entrance Hall'},
-            'brief': "Everything preserved under sheets. Like no one dared disturb it.",
-            'description': (
-                "You are in the Parlor.\n"
-                "Antique furniture under dusty white sheets — preserved, undisturbed.\n"
-                "A grand mirror above a cold fireplace, cracked diagonally.\n"
-                "A broken phonograph in the corner, needle stuck.\n"
-                "The air is stale — aged wood and something faintly floral."
-            ),
-            'items': {
-                "guestbook":   "A dust-covered guestbook. Pages brittle.",
-                "energy bars": "Three sealed protein bars stashed behind the phonograph. Still good.",
-            },
-            'objects': {
-                "phonograph": (
-                    "The needle is stuck in a groove. Someone set it playing\n"
-                    "deliberately before they left. You wonder what the last song was."
-                ),
-                "mirror": (
-                    "Cracked diagonally. Your reflection is split — two versions\n"
-                    "of you, slightly offset. You look pale. Paler than you should.\n"
-                    "You look away before the other one does."
-                ),
-                "fireplace": (
-                    "Cold. Grey ash in the grate. Among the ash, a scrap of\n"
-                    "burned paper. One word still legible: 'Shelly.'"
-                ),
-                "armchair": (
-                    "Dried blood on the right armrest. Someone sat here,\n"
-                    "injured, and stayed for a while. The indent in the cushion\n"
-                    "is still there — deep. They were here for days.\n\n"
-                    "Wait. Something is wedged between the cushion and the armrest."
-                ),
-                "tea set": (
-                    "Tipped over. Cups shattered. Whoever left didn't look back.\n"
-                    "Tea stains on the tablecloth — long since dry."
-                ),
-            }
-        },
-
-        'Cloakroom': {
-            'exits': {'west': 'Entrance Hall'},
-            'brief': "Dust-heavy coats. A locked cabinet. One coat missing from the rack.",
-            'description': (
-                "You are in the Cloakroom.\n"
-                "A narrow space lined with coat racks and a storage cabinet.\n"
-                "Dust-covered coats hang lifelessly. The floor creaks underfoot.\n"
-                "A small mirror on the wall, cracked at one corner."
-            ),
-            'items': {
-                "bottled water": "A sealed bottle tucked deep in a coat pocket. Cold.",
-            },
-            'objects': {
-                "mirror": (
-                    "Cracked at the corner. Your reflection is distorted —\n"
-                    "one eye lower than the other, jaw at the wrong angle.\n"
-                    "You know it's just the crack."
-                ),
-                "coats": (
-                    "Old coats, thick with dust. One rack has a gap —\n"
-                    "a coat is missing. The hanger still swings faintly.\n"
-                    "House keys in one of the remaining pockets. No use to you."
-                ),
-                "cabinet": (
-                    "A locked wooden cabinet. Basic padlock.\n"
-                    "You'd need something thin and rigid to open it."
-                ),
-                "hat": (
-                    "A hat on the floor, brim thick with dust.\n"
-                    "It's been there for weeks. The owner didn't come back."
-                ),
-            }
-        },
-
-        'Living Room': {
-            'exits': {
-                'east':  'Entrance Hall',
-                'south': 'Kitchen',
-                'north': 'Master Bedroom',
-            },
-            'locked_exits': {'west': 'Quarantine Room'},
-            'brief': "Overturned furniture. A letter placed deliberately in the middle of the floor.",
-            'description': (
-                "You are in the Living Room.\n"
-                "A shattered television on its side. An overturned bookcase scattering\n"
-                "papers and broken frames across the floor. A photograph on the\n"
-                "mantelpiece facing down.\n"
-                "A crumpled letter sits in the centre of the floor — placed, not dropped."
-            ),
-            'items': {
-                "kristy's letter": "A bloodstained letter. Placed deliberately.",
-            },
-            'objects': {
-                "photograph": (
-                    "Face-down on the mantelpiece. You turn it over:\n"
-                    "a man — younger, smiling — with a woman and a small girl.\n"
-                    "On the back: 'We'll do this together.'\n"
-                    "The man is Dr. Barbados. You don't know how you know that."
-                ),
-                "quarantine door": (
-                    "A heavy reinforced door set into the west wall.\n"
-                    "Sliding bolt and keyhole — both engaged.\n"
-                    "The wood on the far side is scored with deep, even lines.\n"
-                    "Tally marks. You count them before you can stop yourself.\n"
-                    "Forty-three."
-                ),
-                "television": (
-                    "Screen caved in — something hit it hard.\n"
-                    "A bloodstain on the corner. Plug still in the wall."
-                ),
-                "bookcase": (
-                    "Toppled. Among the papers, a loose research journal page —\n"
-                    "equations you don't understand. At the bottom, underlined:\n"
-                    "'Do not proceed to Stage 3.'"
-                ),
-                "mantelpiece": (
-                    "Cold stone. The photograph and undisturbed dust.\n"
-                    "One small handprint in the dust — too small for an adult."
-                ),
-            }
-        },
-
-        'Kitchen': {
-            'exits': {
-                'north': 'Living Room',
-                'east':  'Study',
-            },
-            'brief': "Stripped bare. Chemical smell. Don't make sparks.",
-            'description': (
-                "You are in the Kitchen.\n"
-                "The cabinets hang open and empty — stripped.\n"
-                "Floorboards near the pantry door have collapsed inward.\n"
-                "A faint chemical smell in the air. Not food. Something piped.\n"
-                "Be careful with anything that makes a spark."
-            ),
-            'items': {
-                "food supplies": "A dented tin of canned goods and some sealed protein bars.",
-                "water bottle":  "A full sealed water bottle.",
-            },
-            'objects': {
-                "cabinets": (
-                    "Every shelf emptied. Someone was here before you.\n"
-                    "One cabinet door is hanging off its hinge."
-                ),
-                "floorboards": (
-                    "Several boards near the pantry collapsed into a dark space below.\n"
-                    "The gap isn't large enough to fit through.\n"
-                    "The smell coming up is bad — rot and standing water."
-                ),
-                "stove": (
-                    "Old gas stove. One burner knob turned slightly — not all the way.\n"
-                    "That explains the smell. Don't use open flame in this room."
-                ),
-                "sink": (
-                    "Bone dry. Both taps open, nothing coming out.\n"
-                    "Dead plant on the windowsill. Through the window: empty garden."
-                ),
-            }
-        },
-
-        'Study': {
-            'exits': {'west': 'Kitchen'},
-            'brief': "Research notes everywhere. One line pinned to the wall: 'Trust no one.'",
-            'description': (
-                "You are in the Study.\n"
-                "A desk covered in handwritten research notes. Bookshelves\n"
-                "lining the walls, one toppled. A dark computer terminal — no power.\n"
-                "Pinned to the wall, underlined twice: 'Trust no one.'"
-            ),
-            'items': {
-                "walkie-talkie":  "A military-grade walkie-talkie. Charged. Only static.",
-                "quarantine key": "A heavy key on a red lanyard. Labelled 'Q-ROOM'.",
-                "voice recorder": "A cracked voice recorder. Indicator light still blinking.",
-            },
-            'objects': {
-                "desk": (
-                    "Covered in research notes. Cell diagrams. Equations.\n"
-                    "'Stage 2 replication' and 'neural bridge — viable?' throughout.\n"
-                    "Last page is blank except four words pressed hard into the paper:\n"
-                    "'What have I done.'"
-                ),
-                "terminal": (
-                    "Dark. No power.\n"
-                    "Sticky note on screen: 'Camera log — 3 entries. Remote access required.'\n"
-                    "If the generator were running, you might access it."
-                ),
-                "bookshelves": (
-                    "Medical and biology texts. One shelf swept completely clear.\n"
-                    "In the gap, scratched into the wood: 'RUN'"
-                ),
-                "research notes": (
-                    "Dozens of loose pages. Neural pathways. Toxicology.\n"
-                    "Then a shift — infection vectors. Reanimation timelines.\n"
-                    "The handwriting gets messier toward the end.\n"
-                    "The final few pages are written in something that isn't ink."
-                ),
-                "safe": (
-                    "A small wall safe behind a pulled-aside shelf.\n"
-                    "Combination lock. You'd need the combination."
-                ),
-            }
-        },
-
-        'Master Bedroom': {
-            'exits': {
-                'south': 'Living Room',
-                'east':  'Bathroom',
-            },
-            'brief': "Torn sheets. A handprint smeared down the wall. Empty pill bottles.",
-            'description': (
-                "You are in the Master Bedroom.\n"
-                "A large bed with torn sheets, half-pulled to the floor.\n"
-                "The closet door hangs ajar. A bloody handprint smeared down the\n"
-                "wall beside the window — someone slid. Empty medication bottles\n"
-                "on the nightstand. The room smells like something that ended badly."
-            ),
-            'items': {
-                "first aid kit":    "A proper medical kit — sealed. Bandages, antiseptic, sutures.",
-                "kristy's journal": "A leather-bound journal. Dried blood on the cover.",
-            },
-            'objects': {
-                "bloody handprint": (
-                    "A single handprint on the wall, smeared downward.\n"
-                    "The print is small. A woman's hand."
-                ),
-                "closet": (
-                    "Inside: clothes on hangers, shoes on the floor, a scarf\n"
-                    "torn cleanly in half. Nothing missing except who wore these."
-                ),
-                "nightstand": (
-                    "Three empty pill bottles — prescribed to 'K. O'Hara.'\n"
-                    "Anxiety. Insomnia. And a third label you don't recognise.\n"
-                    "All empty. Finished, not spilled."
-                ),
-                "window": (
-                    "Cracked. Curtains drawn but light bleeds through.\n"
-                    "Through it: the overgrown garden, and shapes beyond.\n"
-                    "Slow. Aimless. More than you can count.\n"
-                    "They haven't noticed the house yet."
-                ),
-            }
-        },
-
-        'Bathroom': {
-            'exits': {'west': 'Master Bedroom'},
-            'brief': "A figure in a hospital gown, slumped against the bathtub. Not quite still.",
-            'description': (
-                "You are in the Bathroom.\n"
-                "A cracked mirror above a dry sink. Stained tiles.\n"
-                "A figure in a hospital gown is slumped against the bathtub.\n"
-                "The smell is very bad. Move carefully."
-            ),
-            'items': {},
-            'objects': {
-                "mirror": (
-                    "Cracked in several places. Your reflection fragments across\n"
-                    "the breaks — pale, hollow, fractured.\n"
-                    "One reflection doesn't quite line up with the others.\n"
-                    "You tell yourself it's the angle."
-                ),
-                "figure": (
-                    "A zombie. Former patient — hospital gown, bare feet, IV port still taped\n"
-                    "to its arm. It stirs when you get close. Not aggressive yet.\n"
-                    "But it will be if you make noise.\n"
-                    "It was a person once. Not long ago.\n"
-                    "(EXAMINE FIGURE to engage.)"
-                ),
-                "sink": (
-                    "Bone dry. Tap rusted open, nothing coming out.\n"
-                    "A ring of grime where water used to reach."
-                ),
-                "medicine cabinet": (
-                    "Above the sink, door hanging open.\n"
-                    "Empty — mostly. One unused syringe still in packaging.\n"
-                    "You leave it."
-                ),
-                "bathtub": (
-                    "Dry. A dark ring marks the old waterline.\n"
-                    "The bottom is stained in a way that wasn't just water."
-                ),
-            }
-        },
-
-        'Quarantine Room': {
-            'exits': {'east': 'Living Room'},
-            'brief': "Tally marks cover every wall. Something breathes in the dark.",
-            'description': (
-                "You are in the Quarantine Room.\n"
-                "The walls are covered in long, deliberate scratch marks — measured,\n"
-                "evenly spaced. Tally marks. The decay smell is overwhelming.\n"
-                "The room is dark beyond what your flashlight reaches.\n"
-                "You can hear breathing. Slow. Patient."
-            ),
-            'items': {},
-            'objects': {
-                "scratch marks": (
-                    "Rows of parallel lines etched deep into the plaster.\n"
-                    "You count them. You stop counting.\n"
-                    "You don't want to know how long he's been in here."
-                ),
-                "darkness": (
-                    "The corners are absolute black.\n"
-                    "You can't see what's there.\n"
-                    "But you can hear it breathing."
-                ),
-                "barbados": (
-                    "He's here. Still — until he isn't.\n"
-                    "His eyes catch your light: pale, luminous, aware.\n"
-                    "He turns toward you slowly. All the time in the world.\n"
-                    "Like someone who has been waiting specifically for you.\n"
-                    "He knows you're here. He knew before you opened the door."
-                ),
-            }
-        },
-
-        'Lab Wing': {
-            'exits': {'west': 'Basement'},
-            'brief': "Secondary lab. A workstation glows. The specimen case was broken from inside.",
-            'description': (
-                "You are in the Lab Wing.\n"
-                "A secondary research space — clinical, smaller than the basement.\n"
-                "Steel cabinets line the walls. A workstation glows on backup power.\n"
-                "A glass specimen case on the central table — broken open from inside.\n"
-                "The air is colder here. Wrong cold."
-            ),
-            'items': {
-                "medical file": "A sealed file, red-taped. Your name is on the outside.",
-                "sample case":  "A cracked specimen container. 'Subject 01 — Baseline.'",
-            },
-            'objects': {
-                "workstation": (
-                    "Terminal on backup power. Screen shows a log entry:\n"
-                    "  'Subject 01 — status: AWOL.\n"
-                    "   Last reading: off-chart neural activity.\n"
-                    "   Recommend immediate containment if located.'\n"
-                    "A camera feed: four rooms. Three dark. One isn't.\n"
-                    "The Quarantine Room. Something moves in the corner."
-                ),
-                "specimen case": (
-                    "Reinforced glass — designed to hold biohazardous material.\n"
-                    "Something broke out. The edges are pushed outward.\n"
-                    "Bloodstains on the table. Old ones and new ones.\n"
-                    "Label: 'Subject 01 — Baseline Sample.'"
-                ),
-                "cabinets": (
-                    "Most sealed with biohazard locks. One stands open — emptied.\n"
-                    "On the shelf inside, scratched into the metal:\n"
-                    "'He knows you're coming.'"
-                ),
-                "camera feed": (
-                    "Four split-screen feeds. Three dark.\n"
-                    "Quarantine Room: something in the corner. Not moving.\n"
-                    "Waiting. The timestamp reads 8 weeks ago. Looping."
-                ),
-            }
-        },
-    }
+    """Thin wrapper: load room payload from external content module."""
+    from rooms_loader import load_rooms
+    return load_rooms()
 
 
 # ============================================================
@@ -1670,12 +1310,12 @@ def action_examine(target, room_name, rooms, player):
 
     # V5: Bathroom zombie → combat encounter
     if room_name == 'Bathroom' and target in ('figure', 'zombie', 'person', 'body'):
-        if 'bathroom_zombie_resolved' not in player.story_flags:
+        if StoryFlag.BATHROOM_ZOMBIE_RESOLVED not in player.story_flags:
             _bathroom_zombie_encounter(room_name, rooms, player)
             return
         else:
             separator()
-            if 'bathroom_zombie_mercy' in player.story_flags:
+            if StoryFlag.BATHROOM_ZOMBIE_MERCY in player.story_flags:
                 print("There's nothing left to see here.\nWhat you did was necessary. You keep telling yourself that.")
             else:
                 print("It's still there. Still watching you from the floor.\nIt hasn't moved toward you. But it hasn't looked away either.")
@@ -1684,8 +1324,8 @@ def action_examine(target, room_name, rooms, player):
 
     # V6: Parlor armchair — hidden survivor note discovery
     if room_name == 'Parlor' and target in ('armchair', 'chair', 'cushion'):
-        if 'armchair_searched' not in player.story_flags:
-            player.story_flags['armchair_searched'] = True
+        if StoryFlag.ARMCHAIR_SEARCHED not in player.story_flags:
+            player.story_flags[StoryFlag.ARMCHAIR_SEARCHED] = True
             separator()
             fast_print(rooms['Parlor']['objects']['armchair'])
             print()
@@ -1704,7 +1344,7 @@ def action_examine(target, room_name, rooms, player):
 
     # V6: Master Bedroom closet — burst zombie
     if room_name == 'Master Bedroom' and target in ('closet',):
-        if 'closet_zombie_resolved' not in player.story_flags:
+        if StoryFlag.CLOSET_ZOMBIE_RESOLVED not in player.story_flags:
             _closet_zombie_encounter(player, rooms)
             return
         else:
@@ -1723,7 +1363,7 @@ def action_examine(target, room_name, rooms, player):
     # Generator interaction
     if target in ('generator',) and room_name == 'Basement':
         separator()
-        if 'generator_started' in player.story_flags:
+        if StoryFlag.GENERATOR_STARTED in player.story_flags:
             print("The generator runs steadily. The lab door to the east is powered.")
         else:
             print(rooms['Basement']['objects']['generator'])
@@ -1802,14 +1442,14 @@ def action_read(target, room_name, rooms, player):
 def _on_read(doc_name, player):
     """Story flags and hidden stat shifts triggered by reading documents."""
     if doc_name == "mel's notebook":
-        player.story_flags['found_mels_warning'] = True
+        player.story_flags[StoryFlag.FOUND_MELS_WARNING] = True
         player.hidden_stats['Mental Stability'] -= 1
         player.add_note('people',
             "Dr. Mel Peoples (Mel) — left a warning: Barbados is no longer human. He didn't make it out.")
 
     if doc_name == "research log":
-        player.story_flags['knows_about_compound']             = True
-        player.story_flags['knows_protagonist_is_subject_01']  = True
+        player.story_flags[StoryFlag.KNOWS_ABOUT_COMPOUND]             = True
+        player.story_flags[StoryFlag.KNOWS_PROTAGONIST_IS_SUBJECT_01]  = True
         slow_print("\n[Something about 'Subject 01' hits differently.]")
         player.add_note('clues',
             "The research log mentions 'Subject 01 — stable, alive, different.' You may be Subject 01.")
@@ -1817,33 +1457,33 @@ def _on_read(doc_name, player):
             "Dr. Andre Barbados — self-administered the compound (Subject 02). Results: catastrophic.")
 
     if doc_name == "elias's diary page":
-        player.story_flags['knows_barbados_self_injected'] = True
+        player.story_flags[StoryFlag.KNOWS_BARBADOS_SELF_INJECTED] = True
         player.add_note('people',
             "Elias March — Patient #1. Came for terminal cancer treatment. Sensed something was wrong.")
 
     if doc_name == "kristy's letter":
-        player.story_flags['found_kristys_warning'] = True
-        player.story_flags['knows_key_in_study']    = True
+        player.story_flags[StoryFlag.FOUND_KRISTYS_WARNING] = True
+        player.story_flags[StoryFlag.KNOWS_KEY_IN_STUDY]    = True
         player.add_note('people',
             "Dr. Kristy O'Hara (Kristy) — locked Barbados in the quarantine room. Didn't make it out.")
         player.add_note('clues',
             "The quarantine key is in the study.")
 
     if doc_name == "voice recorder":
-        player.story_flags['heard_daniels_warning'] = True
+        player.story_flags[StoryFlag.HEARD_DANIELS_WARNING] = True
         player.hidden_stats['Alpha Awareness']      += 1
         player.add_note('people',
             "Daniel Everett — lab assistant. Tried to destroy the compound samples. Failed.")
 
     if doc_name == "kristy's journal":
-        player.story_flags['read_full_journal']     = True
+        player.story_flags[StoryFlag.READ_FULL_JOURNAL]     = True
         player.hidden_stats['Alpha Awareness']      += 2
         player.add_note('clues',
             "Barbados isn't trying to escape the quarantine room — he's practicing. Learning.")
 
     if doc_name == "medical file":
-        player.story_flags['read_medical_file']     = True
-        player.story_flags['knows_full_truth']      = True
+        player.story_flags[StoryFlag.READ_MEDICAL_FILE]     = True
+        player.story_flags[StoryFlag.KNOWS_FULL_TRUTH]      = True
         player.hidden_stats['Alpha Awareness']      += 3
         player.hidden_stats['Mental Stability']     = max(0,
             player.hidden_stats['Mental Stability'] - 2)
@@ -1854,11 +1494,11 @@ def _on_read(doc_name, player):
             "You are not infected. The compound made you something new entirely. Irreversible.")
 
     if doc_name == "sample case":
-        player.story_flags['knows_compound_irreversible'] = True
+        player.story_flags[StoryFlag.KNOWS_COMPOUND_IRREVERSIBLE] = True
         player.hidden_stats['Alpha Awareness']            += 1
 
     if doc_name == "survivor note":
-        player.story_flags['found_survivor_note'] = True
+        player.story_flags[StoryFlag.FOUND_SURVIVOR_NOTE] = True
         player.add_note('people',
             "Thomas Halley — delivery driver. Sheltered here after the outbreak. Sat in the Parlor armchair. Didn't make it.")
         player.add_note('clues',
@@ -1883,7 +1523,7 @@ def _on_pickup(item_name, player):
             player.unlock_substat('First Aid', 1)
             print("[First Aid substat unlocked.]")
     if item_name == "walkie-talkie":
-        player.story_flags['has_comms'] = True
+        player.story_flags[StoryFlag.HAS_COMMS] = True
         slow_print("It hisses with static. Something is out there on the frequencies.")
         player.add_note('clues',
             "You have a walkie-talkie. Something might be on the frequencies.")
@@ -1917,23 +1557,23 @@ def action_go(direction, room_name, rooms, player):
         target_room = locked[direction]
 
         if target_room == 'Quarantine Room':
-            if player.has_item('quarantine key'):
+            if player.has_item(ItemId.QUARANTINE_KEY):
                 slow_print("You slide the quarantine key into the lock. It turns.")
                 slow_print("The bolt slides back. You push the door open.")
                 slow_print("The smell hits you first.")
-                player.story_flags['quarantine_opened'] = True
+                player.story_flags[StoryFlag.QUARANTINE_OPENED] = True
                 exits[direction] = locked.pop(direction)
                 return target_room
             else:
                 print("The door is locked — bolt and keyhole both engaged.")
-                if 'found_kristys_warning' in player.story_flags:
+                if StoryFlag.FOUND_KRISTYS_WARNING in player.story_flags:
                     print("Kristy's letter said the key is in the study.")
                 else:
                     print("You can hear something on the other side. Slow. Deliberate.")
                 return room_name
 
         if target_room == 'Lab Wing':
-            if 'generator_started' in player.story_flags:
+            if StoryFlag.GENERATOR_STARTED in player.story_flags:
                 slow_print("The card reader glows green. You push the door open.")
                 exits[direction] = locked.pop(direction)
                 return target_room
@@ -1961,11 +1601,11 @@ def action_use(item, target, room_name, rooms, player):
             print(f"You're not carrying a '{item}'.")
             return
 
-    if 'flashlight' in item_lower and ('generator' in target_lower or not target_lower):
+    if ItemId.FLASHLIGHT in item_lower and ('generator' in target_lower or not target_lower):
         if room_name != 'Basement':
             print("There's nothing useful to light up here.")
             return
-        if 'generator_started' in player.story_flags:
+        if StoryFlag.GENERATOR_STARTED in player.story_flags:
             print("The generator is already running.")
             return
         if 'generator' not in player.examined:
@@ -1974,7 +1614,7 @@ def action_use(item, target, room_name, rooms, player):
         _start_generator(player, rooms)
         return
 
-    if 'flashlight' in item_lower:
+    if ItemId.FLASHLIGHT in item_lower:
         print("You click on the flashlight. The beam cuts sharply through the dark.")
         return
 
@@ -1982,7 +1622,7 @@ def action_use(item, target, room_name, rooms, player):
         slow_print("You eat. Your body accepts it with something close to relief.")
         player.survival['hunger'] = min(100, player.survival['hunger'] + 35)
         player.hp = min(player.max_hp, player.hp + 10)
-        for fname in ('food supplies', 'energy bars', 'energy bar'):
+        for fname in (ItemId.FOOD_SUPPLIES, ItemId.ENERGY_BARS, 'energy bar'):
             if player.remove_item(fname):
                 break
         return
@@ -1991,7 +1631,7 @@ def action_use(item, target, room_name, rooms, player):
         slow_print("You drink. The dryness in your throat eases slightly.")
         player.survival['thirst'] = min(100, player.survival['thirst'] + 40)
         player.hp = min(player.max_hp, player.hp + 5)
-        for wname in ('water bottle', 'bottled water'):
+        for wname in (ItemId.WATER_BOTTLE, ItemId.BOTTLED_WATER):
             if player.remove_item(wname):
                 break
         return
@@ -2003,7 +1643,7 @@ def action_use(item, target, room_name, rooms, player):
         player.survival['stress'] = max(0, player.survival['stress'] - 20)
         return
 
-    if 'quarantine key' in item_lower:
+    if ItemId.QUARANTINE_KEY in item_lower:
         print("Try going west to use it on the quarantine room door.")
         return
 
@@ -2014,13 +1654,13 @@ def action_start(target, room_name, rooms, player):
     if room_name != 'Basement':
         print("There's nothing here to start.")
         return
-    if 'generator_started' in player.story_flags:
+    if StoryFlag.GENERATOR_STARTED in player.story_flags:
         print("The generator is already running.")
         return
     if 'generator' not in player.examined:
         print("Examine the generator before trying to start it.")
         return
-    if not player.has_item('flashlight'):
+    if not player.has_item(ItemId.FLASHLIGHT):
         print("You need better light to see the pull cord clearly.\nTry: USE FLASHLIGHT ON GENERATOR")
         return
     _start_generator(player, rooms)
@@ -2046,7 +1686,7 @@ def _start_generator(player, rooms):
     print()
     slow_print("Lab Wing — now accessible.")
     separator()
-    player.story_flags['generator_started'] = True
+    player.story_flags[StoryFlag.GENERATOR_STARTED] = True
     if not player.substats['Mechanics']['unlocked']:
         player.unlock_substat('Mechanics', 1)
         print("[Mechanics substat unlocked.]")
@@ -2057,14 +1697,14 @@ def _start_generator(player, rooms):
 
 def action_eat(target, rooms, room_name, player):
     if any(w in target for w in ('food', 'bar', 'energy', 'supplies', 'tin', 'can')):
-        action_use('food supplies', None, room_name, rooms, player)
+        action_use(ItemId.FOOD_SUPPLIES, None, room_name, rooms, player)
     else:
         print(f"You don't have any '{target}' to eat.")
 
 
 def action_drink(target, rooms, room_name, player):
     if any(w in target for w in ('water', 'bottle', 'drink')):
-        action_use('water bottle', None, room_name, rooms, player)
+        action_use(ItemId.WATER_BOTTLE, None, room_name, rooms, player)
     else:
         print(f"You don't have any '{target}' to drink.")
 
@@ -2083,9 +1723,148 @@ def action_drop(target, room_name, rooms, player):
 # COMBAT ENCOUNTERS
 # ============================================================
 
+@dataclass
+class EncounterDef:
+    encounter_id: str
+    room: str
+    gate_flag: str
+    enemy_factory: callable
+    intro_lines: list
+    win_lines: list
+    escape_lines: list
+    lose_lines: list
+    rewards_on_win: dict = field(default_factory=dict)
+    rewards_on_escape: dict = field(default_factory=dict)
+    clear_on_escape: bool = True
+
+
+def _apply_encounter_rewards(player, rewards):
+    if not rewards:
+        return
+    for stat, delta in rewards.get('hidden_stats', {}).items():
+        player.hidden_stats[stat] = player.hidden_stats.get(stat, 0) + delta
+    for flag_name, flag_value in rewards.get('story_flags', {}).items():
+        player.story_flags[flag_name] = flag_value
+    for category, entry in rewards.get('notes', []):
+        player.add_note(category, entry)
+
+
+def resolve_configured_encounter(player, rooms, config):
+    """Generic encounter resolver driven entirely by encounter config."""
+    if config.gate_flag in player.story_flags:
+        return
+
+    separator()
+    for line in config.intro_lines:
+        slow_print(line)
+    separator()
+
+    enemy = config.enemy_factory()
+    result = combat_loop(player, enemy)
+
+    if result == 'win':
+        separator()
+        for line in config.win_lines:
+            slow_print(line)
+        player.story_flags[config.gate_flag] = True
+        _apply_encounter_rewards(player, config.rewards_on_win)
+        separator()
+        return
+
+    if result == 'escaped':
+        separator()
+        for line in config.escape_lines:
+            slow_print(line)
+        if config.clear_on_escape:
+            player.story_flags[config.gate_flag] = True
+        _apply_encounter_rewards(player, config.rewards_on_escape)
+        separator()
+        return
+
+    separator()
+    for line in config.lose_lines:
+        slow_print(line)
+    separator()
+    sys.exit()
+
+
+ENCOUNTER_CONFIGS = {
+    'entrance_hall': EncounterDef(
+        encounter_id='entrance_hall',
+        room='Entrance Hall',
+        gate_flag=StoryFlag.ENTRANCE_HALL_ZOMBIE_CLEARED,
+        enemy_factory=make_entrance_zombie,
+        intro_lines=[
+            "A zombie — dead-eyed, slow — is blocking the hallway.\nIt turns toward you as you step off the stairs.",
+            "This is your first fight. You don't have a choice.",
+        ],
+        win_lines=[
+            "The hallway is clear.",
+            "Your hands are shaking. Your pulse is loud in your ears.",
+            "But you're still standing.",
+        ],
+        escape_lines=[
+            "You back down the stairs — it loses interest.",
+        ],
+        lose_lines=[
+            "You go down in the entrance hall before you even started.",
+            "\n— GAME OVER —\n",
+        ],
+        rewards_on_win={
+            'hidden_stats': {'Survival Skill': 1},
+            'notes': [('clues', "You can fight. You should expect more.")],
+        },
+    ),
+    'kitchen': EncounterDef(
+        encounter_id='kitchen',
+        room='Kitchen',
+        gate_flag=StoryFlag.KITCHEN_ZOMBIE_CLEARED,
+        enemy_factory=make_kitchen_zombie,
+        intro_lines=[
+            "Something is moving near the stripped cabinets.\nA zombie in torn clothes — scavenging through the empty shelves.\nIt hasn't heard you yet. But it will.",
+        ],
+        win_lines=["The kitchen is clear."],
+        escape_lines=["You slip out — it loses interest in you."],
+        lose_lines=[
+            "The kitchen floor is the last thing you see.",
+            "\n— GAME OVER —\n",
+        ],
+        rewards_on_win={'hidden_stats': {'Survival Skill': 1}},
+    ),
+    'study': EncounterDef(
+        encounter_id='study',
+        room='Study',
+        gate_flag=StoryFlag.STUDY_ZOMBIE_CLEARED,
+        enemy_factory=make_study_zombie,
+        intro_lines=[
+            "There's a zombie at the research desk.\nIt's hunched over the notes — almost like it's reading them.\nIt turns toward you as you enter.",
+        ],
+        win_lines=["The study is yours."],
+        escape_lines=["You back out — it doesn't follow."],
+        lose_lines=[
+            "The study floor is cold.",
+            "\n— GAME OVER —\n",
+        ],
+        rewards_on_win={'hidden_stats': {'Survival Skill': 1}},
+    ),
+}
+
+
+ROOM_ENTRY_CONFIG_ENCOUNTERS = {
+    'Entrance Hall': ['entrance_hall'],
+    'Kitchen': ['kitchen'],
+    'Study': ['study'],
+}
+
+
+def run_room_entry_configured_encounters(current_room, player, rooms):
+    for encounter_id in ROOM_ENTRY_CONFIG_ENCOUNTERS.get(current_room, []):
+        resolve_configured_encounter(player, rooms, ENCOUNTER_CONFIGS[encounter_id])
+
+
 def _living_room_zombie_encounter(player, rooms):
     """Standard Zombie in the Living Room — triggers once on first entry."""
-    if 'living_room_zombie_cleared' in player.story_flags:
+    if StoryFlag.LIVING_ROOM_ZOMBIE_CLEARED in player.story_flags:
         return
 
     separator()
@@ -2106,7 +1885,7 @@ def _living_room_zombie_encounter(player, rooms):
         separator()
         slow_print("The room is clear. Your pulse is hammering.")
         slow_print("That was real. That just happened.")
-        player.story_flags['living_room_zombie_cleared'] = True
+        player.story_flags[StoryFlag.LIVING_ROOM_ZOMBIE_CLEARED] = True
         player.hidden_stats['Survival Skill'] += 1
         player.add_note('clues',
             "You can fight. Remember that.")
@@ -2115,7 +1894,7 @@ def _living_room_zombie_encounter(player, rooms):
         separator()
         slow_print("You back off — the zombie loses interest for a moment.")
         slow_print("The living room is still accessible, but be ready.")
-        player.story_flags['living_room_zombie_cleared'] = True
+        player.story_flags[StoryFlag.LIVING_ROOM_ZOMBIE_CLEARED] = True
         separator()
     elif result == 'lose':
         separator()
@@ -2151,9 +1930,9 @@ def _bathroom_zombie_encounter(room_name, rooms, player):
         slow_print("Your hands won't stop shaking.")
         slow_print("You weren't sure you could do that.")
         slow_print("Now you know.")
-        player.story_flags['bathroom_zombie_resolved'] = True
-        player.story_flags['bathroom_zombie_mercy']    = True
-        player.story_flags['showed_mercy']             = True
+        player.story_flags[StoryFlag.BATHROOM_ZOMBIE_RESOLVED] = True
+        player.story_flags[StoryFlag.BATHROOM_ZOMBIE_MERCY]    = True
+        player.story_flags[StoryFlag.SHOWED_MERCY]             = True
         player.hidden_stats['Mental Stability']        = max(0, player.hidden_stats['Mental Stability'] - 2)
         player.hidden_stats['Alpha Awareness']         += 1
         player.hidden_stats['Survival Skill']          += 1
@@ -2166,8 +1945,8 @@ def _bathroom_zombie_encounter(room_name, rooms, player):
         separator()
         slow_print("You back out of the bathroom, pulse slamming.")
         slow_print("It watches you leave. Something in those clouded eyes tracks you\nall the way to the door.")
-        player.story_flags['bathroom_zombie_resolved'] = True
-        player.story_flags['bathroom_zombie_left']     = True
+        player.story_flags[StoryFlag.BATHROOM_ZOMBIE_RESOLVED] = True
+        player.story_flags[StoryFlag.BATHROOM_ZOMBIE_LEFT]     = True
         player.hidden_stats['Mental Stability']        = max(0, player.hidden_stats['Mental Stability'] - 1)
         separator()
 
@@ -2185,96 +1964,18 @@ def _bathroom_zombie_encounter(room_name, rooms, player):
 # ============================================================
 
 def _entrance_hall_zombie_encounter(player, rooms):
-    """Unavoidable first combat encounter — teaches the system."""
-    if 'entrance_hall_zombie_cleared' in player.story_flags:
-        return
-    separator()
-    slow_print(
-        "A zombie — dead-eyed, slow — is blocking the hallway.\n"
-        "It turns toward you as you step off the stairs."
-    )
-    time.sleep(0.3)
-    slow_print("This is your first fight. You don't have a choice.")
-    time.sleep(0.2)
-    separator()
-    enemy  = make_entrance_zombie()
-    result = combat_loop(player, enemy)
-    if result == 'win':
-        separator()
-        slow_print("The hallway is clear.")
-        slow_print("Your hands are shaking. Your pulse is loud in your ears.")
-        slow_print("But you're still standing.")
-        player.story_flags['entrance_hall_zombie_cleared'] = True
-        player.hidden_stats['Survival Skill'] += 1
-        player.add_note('clues', "You can fight. You should expect more.")
-        separator()
-    elif result == 'escaped':
-        separator()
-        slow_print("You back down the stairs — it loses interest.")
-        player.story_flags['entrance_hall_zombie_cleared'] = True
-        separator()
-    elif result == 'lose':
-        separator()
-        slow_print("You go down in the entrance hall before you even started.")
-        slow_print("\n— GAME OVER —\n")
-        separator()
-        sys.exit()
+    """Config-driven first encounter."""
+    resolve_configured_encounter(player, rooms, ENCOUNTER_CONFIGS['entrance_hall'])
 
 
 def _kitchen_zombie_encounter(player, rooms):
-    """Scavenger zombie in the Kitchen — first entry."""
-    if 'kitchen_zombie_cleared' in player.story_flags:
-        return
-    separator()
-    slow_print(
-        "Something is moving near the stripped cabinets.\n"
-        "A zombie in torn clothes — scavenging through the empty shelves.\n"
-        "It hasn't heard you yet. But it will."
-    )
-    time.sleep(0.2)
-    separator()
-    enemy  = make_kitchen_zombie()
-    result = combat_loop(player, enemy)
-    if result in ('win', 'escaped'):
-        slow_print("The kitchen is clear." if result == 'win' else "You slip out — it loses interest in you.")
-        player.story_flags['kitchen_zombie_cleared'] = True
-        if result == 'win':
-            player.hidden_stats['Survival Skill'] += 1
-        separator()
-    elif result == 'lose':
-        separator()
-        slow_print("The kitchen floor is the last thing you see.")
-        slow_print("\n— GAME OVER —\n")
-        separator()
-        sys.exit()
+    """Config-driven kitchen encounter."""
+    resolve_configured_encounter(player, rooms, ENCOUNTER_CONFIGS['kitchen'])
 
 
 def _study_zombie_encounter(player, rooms):
-    """Zombie hunched over the research desk — first entry."""
-    if 'study_zombie_cleared' in player.story_flags:
-        return
-    separator()
-    slow_print(
-        "There's a zombie at the research desk.\n"
-        "It's hunched over the notes — almost like it's reading them.\n"
-        "It turns toward you as you enter."
-    )
-    time.sleep(0.2)
-    separator()
-    enemy  = make_study_zombie()
-    result = combat_loop(player, enemy)
-    if result in ('win', 'escaped'):
-        slow_print("The study is yours." if result == 'win' else "You back out — it doesn't follow.")
-        player.story_flags['study_zombie_cleared'] = True
-        if result == 'win':
-            player.hidden_stats['Survival Skill'] += 1
-        separator()
-    elif result == 'lose':
-        separator()
-        slow_print("The study floor is cold.")
-        slow_print("\n— GAME OVER —\n")
-        separator()
-        sys.exit()
+    """Config-driven study encounter."""
+    resolve_configured_encounter(player, rooms, ENCOUNTER_CONFIGS['study'])
 
 
 def _closet_zombie_encounter(player, rooms):
@@ -2293,13 +1994,13 @@ def _closet_zombie_encounter(player, rooms):
         separator()
         slow_print("It goes down. Your heart is hammering.")
         slow_print("The closet is clear now.")
-        player.story_flags['closet_zombie_resolved'] = True
+        player.story_flags[StoryFlag.CLOSET_ZOMBIE_RESOLVED] = True
         player.hidden_stats['Survival Skill'] += 1
         separator()
     elif result == 'escaped':
         separator()
         slow_print("You scramble back — it doesn't follow far.")
-        player.story_flags['closet_zombie_resolved'] = True
+        player.story_flags[StoryFlag.CLOSET_ZOMBIE_RESOLVED] = True
         separator()
     elif result == 'lose':
         separator()
@@ -2311,7 +2012,7 @@ def _closet_zombie_encounter(player, rooms):
 
 def _lab_zombie_encounter(player, rooms):
     """Lab technician zombie in the Lab Wing — first entry."""
-    if 'lab_zombie_cleared' in player.story_flags:
+    if StoryFlag.LAB_ZOMBIE_CLEARED in player.story_flags:
         return
     separator()
     slow_print(
@@ -2326,7 +2027,7 @@ def _lab_zombie_encounter(player, rooms):
     result = combat_loop(player, enemy)
     if result in ('win', 'escaped'):
         slow_print("The lab is clear." if result == 'win' else "You retreat — it stays in the lab.")
-        player.story_flags['lab_zombie_cleared'] = True
+        player.story_flags[StoryFlag.LAB_ZOMBIE_CLEARED] = True
         if result == 'win':
             player.hidden_stats['Survival Skill'] += 1
             player.hidden_stats['Alpha Awareness'] += 1
@@ -2384,14 +2085,14 @@ def encounter_barbados(player, rooms):
     print()
     time.sleep(0.7)
 
-    knows_full    = 'knows_full_truth'                  in player.story_flags
-    has_camp      = 'knows_camp_location'               in player.story_flags
-    read_warning  = 'found_kristys_warning'             in player.story_flags
-    knows_truth   = 'knows_barbados_self_injected'      in player.story_flags
-    knows_comp    = 'knows_protagonist_is_subject_01'   in player.story_flags
-    showed_mercy  = 'showed_mercy'                      in player.story_flags
-    told_unknown  = 'told_maya_unknown'                 in player.story_flags
-    told_clean    = 'told_maya_clean'                   in player.story_flags
+    knows_full    = StoryFlag.KNOWS_FULL_TRUTH                  in player.story_flags
+    has_camp      = StoryFlag.KNOWS_CAMP_LOCATION               in player.story_flags
+    read_warning  = StoryFlag.FOUND_KRISTYS_WARNING             in player.story_flags
+    knows_truth   = StoryFlag.KNOWS_BARBADOS_SELF_INJECTED      in player.story_flags
+    knows_comp    = StoryFlag.KNOWS_PROTAGONIST_IS_SUBJECT_01   in player.story_flags
+    showed_mercy  = StoryFlag.SHOWED_MERCY                      in player.story_flags
+    told_unknown  = StoryFlag.TOLD_MAYA_UNKNOWN                 in player.story_flags
+    told_clean    = StoryFlag.TOLD_MAYA_CLEAN                   in player.story_flags
 
     # ── BEST ENDING: full truth + knows the way out ──
     if knows_full and has_camp:
@@ -2465,12 +2166,12 @@ def _ending_title(title):
 # ============================================================
 
 def action_radio(player):
-    if not player.has_item('walkie-talkie'):
+    if not player.has_item(ItemId.WALKIE_TALKIE):
         print("You're not carrying anything to broadcast on.")
         return
 
-    if ('heard_first_signal' not in player.story_flags and
-            'heard_maya_broadcast' not in player.story_flags):
+    if (StoryFlag.HEARD_FIRST_SIGNAL not in player.story_flags and
+            StoryFlag.HEARD_MAYA_BROADCAST not in player.story_flags):
         print("Only static. You haven't picked up a signal yet.")
         return
 
@@ -2481,7 +2182,7 @@ def action_radio(player):
     separator()
     player.last_radio_turn = player.turns
 
-    if 'maya_responded' not in player.story_flags:
+    if StoryFlag.MAYA_RESPONDED not in player.story_flags:
         slow_print("You key the transmit button. Your voice sounds strange to your ears.")
         slow_print(
             "  'Hello — is anyone out there? I just woke up in some kind\n"
@@ -2526,18 +2227,18 @@ def action_radio(player):
                 "  [MAYA]: 'Good. Then get out of there.\n"
                 "   We'll have a team ready when you arrive.'"
             )
-            player.story_flags['told_maya_clean'] = True
+            player.story_flags[StoryFlag.TOLD_MAYA_CLEAN] = True
         else:
             slow_print(
                 "  [MAYA]: '...\n"
                 "   Then you might be exactly who we've been looking for.\n"
                 "   Get out of there. Come to us. There are things you need to know.'"
             )
-            player.story_flags['told_maya_unknown'] = True
+            player.story_flags[StoryFlag.TOLD_MAYA_UNKNOWN] = True
             player.hidden_stats['Alpha Awareness']  += 1
 
-        player.story_flags['maya_responded']      = True
-        player.story_flags['knows_camp_location']  = True
+        player.story_flags[StoryFlag.MAYA_RESPONDED]      = True
+        player.story_flags[StoryFlag.KNOWS_CAMP_LOCATION]  = True
         player.add_note('people',
             "Maya — survivor. Running a camp ~4km northwest. Frequency 7.4. She told you where you are.")
         player.add_note('clues',
@@ -2619,25 +2320,25 @@ def action_hint(room_name, player):
 
     hints = []
 
-    if not player.has_item('flashlight') and room_name == 'Basement':
+    if not player.has_item(ItemId.FLASHLIGHT) and room_name == 'Basement':
         hints.append("There are items in this room — try GET to pick them up.")
-    if player.has_item('quarantine key') and 'quarantine_opened' not in flags:
+    if player.has_item(ItemId.QUARANTINE_KEY) and StoryFlag.QUARANTINE_OPENED not in flags:
         hints.append("You have the quarantine key. The quarantine room is west of the living room.")
-    if 'knows_key_in_study' in flags and not player.has_item('quarantine key'):
+    if StoryFlag.KNOWS_KEY_IN_STUDY in flags and not player.has_item(ItemId.QUARANTINE_KEY):
         hints.append("Kristy's letter said the quarantine key is in the study. The study is east of the kitchen.")
-    if 'generator_started' not in flags and room_name == 'Basement':
+    if StoryFlag.GENERATOR_STARTED not in flags and room_name == 'Basement':
         hints.append("The generator is in this room. EXAMINE it, then USE FLASHLIGHT ON GENERATOR to start it.")
-    if player.has_item('walkie-talkie') and 'maya_responded' not in flags and 'heard_first_signal' in flags:
+    if player.has_item(ItemId.WALKIE_TALKIE) and StoryFlag.MAYA_RESPONDED not in flags and StoryFlag.HEARD_FIRST_SIGNAL in flags:
         hints.append("You picked up a signal on the walkie-talkie. Try RADIO to respond.")
     if not player.notes['people']:
         hints.append("Try READING the documents you find. They'll fill in your NOTES automatically.")
     if len(player.visited_rooms) < 4:
         hints.append("Use PEEK [direction] to preview a room before entering it.")
-    if 'bathroom_zombie_resolved' not in flags and room_name == 'Bathroom':
+    if StoryFlag.BATHROOM_ZOMBIE_RESOLVED not in flags and room_name == 'Bathroom':
         hints.append("EXAMINE the figure — it's a combat encounter, not just atmosphere.")
-    if room_name == 'Study' and not player.has_item('quarantine key'):
+    if room_name == 'Study' and not player.has_item(ItemId.QUARANTINE_KEY):
         hints.append("There's a quarantine key in this room. GET it.")
-    if room_name == 'Living Room' and 'found_kristys_warning' not in flags:
+    if room_name == 'Living Room' and StoryFlag.FOUND_KRISTYS_WARNING not in flags:
         hints.append("There's a letter on the floor. You can READ it here — no need to pick it up first.")
     if player.hp < player.max_hp // 2:
         hints.append("Your HP is low. Use a first aid kit or food to recover before the next fight.")
@@ -2872,15 +2573,11 @@ def main():
                 current = new_room
                 player.visited_rooms.add(current)
                 action_enter_room(current, rooms, player)
-                # V6: 8 combat encounters across the mansion
-                if current == 'Entrance Hall':
-                    _entrance_hall_zombie_encounter(player, rooms)
+                # Config-driven room-entry encounters (proof-of-concept)
+                run_room_entry_configured_encounters(current, player, rooms)
+                # Remaining bespoke encounters
                 if current == 'Living Room':
                     _living_room_zombie_encounter(player, rooms)
-                if current == 'Kitchen':
-                    _kitchen_zombie_encounter(player, rooms)
-                if current == 'Study':
-                    _study_zombie_encounter(player, rooms)
                 if current == 'Lab Wing':
                     _lab_zombie_encounter(player, rooms)
                 if current == 'Quarantine Room':
