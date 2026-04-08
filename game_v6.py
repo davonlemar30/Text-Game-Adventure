@@ -25,6 +25,77 @@ from dataclasses import dataclass, field
 
 
 # ============================================================
+# CANONICAL IDS / CONSTANTS (single source of truth)
+# ============================================================
+
+class StoryFlag:
+    FOUND_MELS_WARNING = 'found_mels_warning'
+    KNOWS_ABOUT_COMPOUND = 'knows_about_compound'
+    KNOWS_PROTAGONIST_IS_SUBJECT_01 = 'knows_protagonist_is_subject_01'
+    KNOWS_BARBADOS_SELF_INJECTED = 'knows_barbados_self_injected'
+    FOUND_KRISTYS_WARNING = 'found_kristys_warning'
+    KNOWS_KEY_IN_STUDY = 'knows_key_in_study'
+    HEARD_DANIELS_WARNING = 'heard_daniels_warning'
+    READ_FULL_JOURNAL = 'read_full_journal'
+    READ_MEDICAL_FILE = 'read_medical_file'
+    KNOWS_FULL_TRUTH = 'knows_full_truth'
+    KNOWS_COMPOUND_IRREVERSIBLE = 'knows_compound_irreversible'
+    FOUND_SURVIVOR_NOTE = 'found_survivor_note'
+    HAS_COMMS = 'has_comms'
+    QUARANTINE_OPENED = 'quarantine_opened'
+    GENERATOR_STARTED = 'generator_started'
+    BATHROOM_ZOMBIE_RESOLVED = 'bathroom_zombie_resolved'
+    BATHROOM_ZOMBIE_MERCY = 'bathroom_zombie_mercy'
+    BATHROOM_ZOMBIE_LEFT = 'bathroom_zombie_left'
+    SHOWED_MERCY = 'showed_mercy'
+    ARMCHAIR_SEARCHED = 'armchair_searched'
+    CLOSET_ZOMBIE_RESOLVED = 'closet_zombie_resolved'
+    LIVING_ROOM_ZOMBIE_CLEARED = 'living_room_zombie_cleared'
+    ENTRANCE_HALL_ZOMBIE_CLEARED = 'entrance_hall_zombie_cleared'
+    KITCHEN_ZOMBIE_CLEARED = 'kitchen_zombie_cleared'
+    STUDY_ZOMBIE_CLEARED = 'study_zombie_cleared'
+    LAB_ZOMBIE_CLEARED = 'lab_zombie_cleared'
+    HEARD_SCRATCHING = 'heard_scratching'
+    HEARD_FIRST_SIGNAL = 'heard_first_signal'
+    HEARD_MAYA_BROADCAST = 'heard_maya_broadcast'
+    MAYA_RESPONDED = 'maya_responded'
+    TOLD_MAYA_CLEAN = 'told_maya_clean'
+    TOLD_MAYA_UNKNOWN = 'told_maya_unknown'
+    KNOWS_CAMP_LOCATION = 'knows_camp_location'
+
+
+class StatusEffect:
+    BLINDED = 'blinded'
+    INFECTED = 'infected'
+    STRESSED = 'stressed'
+    STEADIED = 'steadied'
+    SUPPRESSED = 'suppressed'
+
+
+class ItemId:
+    FLASHLIGHT = 'flashlight'
+    FIRST_AID_KIT = 'first aid kit'
+    FOOD_SUPPLIES = 'food supplies'
+    ENERGY_BARS = 'energy bars'
+    WATER_BOTTLE = 'water bottle'
+    BOTTLED_WATER = 'bottled water'
+    WALKIE_TALKIE = 'walkie-talkie'
+    QUARANTINE_KEY = 'quarantine key'
+
+
+ITEM_ALIASES = {
+    ItemId.FLASHLIGHT: ItemId.FLASHLIGHT,
+    ItemId.FIRST_AID_KIT: ItemId.FIRST_AID_KIT,
+    ItemId.FOOD_SUPPLIES: ItemId.FOOD_SUPPLIES,
+    ItemId.ENERGY_BARS: ItemId.ENERGY_BARS,
+    'energy bar': ItemId.ENERGY_BARS,
+    ItemId.WATER_BOTTLE: ItemId.WATER_BOTTLE,
+    ItemId.BOTTLED_WATER: ItemId.BOTTLED_WATER,
+    ItemId.WALKIE_TALKIE: ItemId.WALKIE_TALKIE,
+    ItemId.QUARANTINE_KEY: ItemId.QUARANTINE_KEY,
+}
+
+# ============================================================
 # DISPLAY UTILITIES
 # ============================================================
 
@@ -103,6 +174,12 @@ class Player:
         if entry not in self.notes.get(category, []):
             self.notes.setdefault(category, []).append(entry)
 
+    def has_flag(self, flag_name):
+        return bool(self.story_flags.get(flag_name, False))
+
+    def set_flag(self, flag_name, value=True):
+        self.story_flags[flag_name] = value
+
     def unlock_substat(self, name, value=1):
         if name in self.substats:
             self.substats[name]['unlocked'] = True
@@ -111,11 +188,18 @@ class Player:
             self.substats[name] = {'value': value, 'unlocked': True}
 
     def has_item(self, item_name):
-        return item_name.lower() in [i.lower() for i in self.inventory]
+        wanted = ITEM_ALIASES.get(str(item_name).lower(), str(item_name).lower())
+        for item in self.inventory:
+            key = ITEM_ALIASES.get(str(item).lower(), str(item).lower())
+            if key == wanted:
+                return True
+        return False
 
     def remove_item(self, item_name):
+        wanted = ITEM_ALIASES.get(str(item_name).lower(), str(item_name).lower())
         for item in self.inventory:
-            if item.lower() == item_name.lower():
+            key = ITEM_ALIASES.get(str(item).lower(), str(item).lower())
+            if key == wanted:
                 self.inventory.remove(item)
                 return True
         return False
@@ -176,7 +260,7 @@ class Move:
         self.move_type    = move_type
         self.power        = power
         self.accuracy     = accuracy
-        self.effect       = effect          # 'blinded','infected','stressed','steadied','suppressed'
+        self.effect       = effect          # StatusEffect.BLINDED,StatusEffect.INFECTED,StatusEffect.STRESSED,StatusEffect.STEADIED,StatusEffect.SUPPRESSED
         self.effect_chance = effect_chance
         self.priority     = priority        # higher = goes first
         self.description  = description
@@ -222,17 +306,17 @@ PLAYER_MOVES = {
     ),
     'guard': Move(
         'Guard', 'Stealth', 0, 1.00,
-        effect='steadied', effect_chance=1.0,
+        effect=StatusEffect.STEADIED, effect_chance=1.0,
         description='Reduce next hit by 40%.'
     ),
     'flash': Move(
         'Flash', 'Psyche', 25, 0.85,
-        effect='blinded', effect_chance=0.40,
+        effect=StatusEffect.BLINDED, effect_chance=0.40,
         description='Shine the light directly in its eyes.'
     ),
     'static_pulse': Move(
         'Static Pulse', 'Psyche', 35, 0.80,
-        effect='stressed', effect_chance=0.30,
+        effect=StatusEffect.STRESSED, effect_chance=0.30,
         description='Psychic surge. May cause stress.'
     ),
     'alpha_sense': Move(
@@ -241,7 +325,7 @@ PLAYER_MOVES = {
     ),
     'override': Move(
         'Override', 'Alpha', 0, 0.85,
-        effect='suppressed', effect_chance=1.0,
+        effect=StatusEffect.SUPPRESSED, effect_chance=1.0,
         description='Suppress enemy next action.'
     ),
 }
@@ -251,7 +335,7 @@ def get_available_moves(player):
     """Return list of move keys the player can currently use."""
     aa = player.hidden_stats['Alpha Awareness']
     moves = ['strike', 'guard']
-    if player.has_item('flashlight'):
+    if player.has_item(ItemId.FLASHLIGHT):
         moves.append('flash')
     if aa >= 3:
         moves.append('static_pulse')
@@ -275,7 +359,7 @@ def make_standard_zombie():
             Move('Shamble', 'Brute', 20, 0.80,
                  description='A lurching, clumsy attack.'),
             Move('Bite',    'Bio',   15, 0.75,
-                 effect='infected', effect_chance=0.20,
+                 effect=StatusEffect.INFECTED, effect_chance=0.20,
                  description='Infected wound — may transmit.'),
         ]
     )
@@ -290,7 +374,7 @@ def make_patient_zombie():
             Move('Scratch', 'Bio',  15, 0.90,
                  description='A raking claw strike.'),
             Move('Infect',  'Bio',  10, 0.70,
-                 effect='infected', effect_chance=1.0,
+                 effect=StatusEffect.INFECTED, effect_chance=1.0,
                  description='Guaranteed infection if it lands.'),
         ]
     )
@@ -305,7 +389,7 @@ def make_barbados():
             Move('Crush',    'Brute',  35, 0.90,
                  description='A devastating physical blow.'),
             Move('Fracture', 'Psyche', 30, 0.85,
-                 effect='stressed', effect_chance=1.0,
+                 effect=StatusEffect.STRESSED, effect_chance=1.0,
                  description='Psychic assault. Causes stress.'),
             Move('Lunge',    'Brute',  50, 0.90,
                  priority=2,
@@ -325,7 +409,7 @@ def make_entrance_zombie():
             Move('Shove',  'Brute', 18, 0.85,
                  description='Knocks you back hard.'),
             Move('Bite',   'Bio',   15, 0.75,
-                 effect='infected', effect_chance=0.20,
+                 effect=StatusEffect.INFECTED, effect_chance=0.20,
                  description='Infects the wound.'),
         ]
     )
@@ -341,7 +425,7 @@ def make_kitchen_zombie():
             Move('Shamble', 'Brute', 20, 0.80,
                  description='Lurching attack.'),
             Move('Bite',    'Bio',   15, 0.75,
-                 effect='infected', effect_chance=0.20,
+                 effect=StatusEffect.INFECTED, effect_chance=0.20,
                  description='Infects the wound.'),
         ]
     )
@@ -357,7 +441,7 @@ def make_study_zombie():
             Move('Shamble', 'Brute', 20, 0.80,
                  description='Slow but relentless.'),
             Move('Bite',    'Bio',   14, 0.70,
-                 effect='infected', effect_chance=0.15,
+                 effect=StatusEffect.INFECTED, effect_chance=0.15,
                  description='A ragged bite.'),
         ]
     )
@@ -387,7 +471,7 @@ def make_lab_tech_zombie():
         hp=40, attack=10, defense=6, speed=5,
         moves=[
             Move('Needle',  'Bio',   18, 0.85,
-                 effect='infected', effect_chance=0.35,
+                 effect=StatusEffect.INFECTED, effect_chance=0.35,
                  description='Still has the syringe. May infect.'),
             Move('Scratch', 'Bio',   15, 0.90,
                  description='Raking claw attack.'),
@@ -475,7 +559,7 @@ def choose_player_move(player, enemy):
 
 def choose_enemy_move(enemy):
     """Select an enemy move. Returns None if suppressed."""
-    if 'suppressed' in enemy.statuses:
+    if StatusEffect.SUPPRESSED in enemy.statuses:
         return None
     # Boss uses Lunge (priority=2) when below 30% HP
     if enemy.is_boss and enemy.hp < enemy.max_hp * 0.30:
@@ -492,7 +576,7 @@ def choose_enemy_move(enemy):
 def resolve_player_move(player, enemy, move):
     """Apply player's chosen move to the enemy."""
     # Accuracy check (blinded reduces acc by 40%)
-    acc = move.accuracy * (0.60 if 'blinded' in player.combat_statuses else 1.0)
+    acc = move.accuracy * (0.60 if StatusEffect.BLINDED in player.combat_statuses else 1.0)
     if random.random() > acc:
         print(f"  Your {move.name} missed!")
         return
@@ -500,15 +584,15 @@ def resolve_player_move(player, enemy, move):
     type_mult = TYPE_CHART[move.move_type][enemy.enemy_type]
 
     # Guard — defensive buff on self
-    if move.effect == 'steadied' and move.power == 0:
-        player.combat_statuses['steadied'] = 1
+    if move.effect == StatusEffect.STEADIED and move.power == 0:
+        player.combat_statuses[StatusEffect.STEADIED] = 1
         print("  You take a defensive stance. Next hit reduced by 40%.")
         return
 
     # Override — suppress enemy
-    if move.effect == 'suppressed' and move.power == 0:
+    if move.effect == StatusEffect.SUPPRESSED and move.power == 0:
         if random.random() <= move.effect_chance:
-            enemy.statuses['suppressed'] = 1
+            enemy.statuses[StatusEffect.SUPPRESSED] = 1
             print(f"  You override {enemy.name}'s next action — it freezes.")
         else:
             print(f"  Override failed. {enemy.name} resists.")
@@ -517,7 +601,7 @@ def resolve_player_move(player, enemy, move):
     # Damage moves
     if move.power > 0:
         # Stressed player deals 75% damage
-        atk = int(player.combat_attack * 0.75) if 'stressed' in player.combat_statuses else player.combat_attack
+        atk = int(player.combat_attack * 0.75) if StatusEffect.STRESSED in player.combat_statuses else player.combat_attack
         damage = calc_damage(atk, move.power, enemy.defense, type_mult)
 
         # Enemy's guard reduces incoming damage
@@ -536,7 +620,7 @@ def resolve_player_move(player, enemy, move):
         print(f"  {move.name} hits for {damage} damage.{eff}")
 
         # Secondary status effect on enemy
-        if move.effect and move.effect != 'steadied' and random.random() <= move.effect_chance:
+        if move.effect and move.effect != StatusEffect.STEADIED and random.random() <= move.effect_chance:
             if move.effect not in enemy.statuses:
                 enemy.statuses[move.effect] = 3
                 print(f"  {enemy.name} is now {move.effect}!")
@@ -547,13 +631,13 @@ def resolve_enemy_move(player, enemy, move):
     if move is None:
         # Suppressed — skip turn and decrement
         print(f"  {enemy.name} hesitates — suppressed!")
-        enemy.statuses['suppressed'] = max(0, enemy.statuses.get('suppressed', 1) - 1)
-        if enemy.statuses['suppressed'] <= 0:
-            del enemy.statuses['suppressed']
+        enemy.statuses[StatusEffect.SUPPRESSED] = max(0, enemy.statuses.get(StatusEffect.SUPPRESSED, 1) - 1)
+        if enemy.statuses[StatusEffect.SUPPRESSED] <= 0:
+            del enemy.statuses[StatusEffect.SUPPRESSED]
         return
 
     # Blinded enemy has reduced accuracy
-    acc = move.accuracy * (0.60 if 'blinded' in enemy.statuses else 1.0)
+    acc = move.accuracy * (0.60 if StatusEffect.BLINDED in enemy.statuses else 1.0)
     if random.random() > acc:
         print(f"  {enemy.name}'s {move.name} missed!")
         return
@@ -562,13 +646,13 @@ def resolve_enemy_move(player, enemy, move):
 
     if move.power > 0:
         # Stressed enemy deals 75% damage
-        atk = int(enemy.attack * 0.75) if 'stressed' in enemy.statuses else enemy.attack
+        atk = int(enemy.attack * 0.75) if StatusEffect.STRESSED in enemy.statuses else enemy.attack
         damage = calc_damage(atk, move.power, player.combat_defense, type_mult)
 
         # Player's steadied status reduces damage
-        if 'steadied' in player.combat_statuses:
+        if StatusEffect.STEADIED in player.combat_statuses:
             damage = int(damage * 0.60)
-            del player.combat_statuses['steadied']
+            del player.combat_statuses[StatusEffect.STEADIED]
             print("  Your guard absorbs some of the impact.")
 
         player.hp = max(0, player.hp - damage)
@@ -595,51 +679,51 @@ def resolve_enemy_move(player, enemy, move):
 def process_status_tick(player, enemy):
     """Tick down status durations and apply DoT effects."""
     # --- Player statuses ---
-    if 'infected' in player.combat_statuses:
+    if StatusEffect.INFECTED in player.combat_statuses:
         player.hp = max(0, player.hp - 3)
-        player.combat_statuses['infected'] -= 1
-        if player.combat_statuses['infected'] <= 0:
-            del player.combat_statuses['infected']
+        player.combat_statuses[StatusEffect.INFECTED] -= 1
+        if player.combat_statuses[StatusEffect.INFECTED] <= 0:
+            del player.combat_statuses[StatusEffect.INFECTED]
             print("  The infection clears.")
         else:
             print(f"  Infected: −3 HP.")
 
     for s in list(player.combat_statuses.keys()):
-        if s == 'infected':
+        if s == StatusEffect.INFECTED:
             continue
         player.combat_statuses[s] -= 1
         if player.combat_statuses[s] <= 0:
             del player.combat_statuses[s]
 
     # --- Enemy statuses ---
-    if 'infected' in enemy.statuses:
+    if StatusEffect.INFECTED in enemy.statuses:
         enemy.hp = max(0, enemy.hp - 3)
-        enemy.statuses['infected'] -= 1
-        if enemy.statuses['infected'] <= 0:
-            del enemy.statuses['infected']
+        enemy.statuses[StatusEffect.INFECTED] -= 1
+        if enemy.statuses[StatusEffect.INFECTED] <= 0:
+            del enemy.statuses[StatusEffect.INFECTED]
 
     for s in list(enemy.statuses.keys()):
-        if s in ('infected', 'suppressed'):
+        if s in (StatusEffect.INFECTED, StatusEffect.SUPPRESSED):
             continue
         enemy.statuses[s] -= 1
         if enemy.statuses[s] <= 0:
             del enemy.statuses[s]
-            if s == 'blinded':
+            if s == StatusEffect.BLINDED:
                 print(f"  {enemy.name} recovers from blindness.")
-            elif s == 'stressed':
+            elif s == StatusEffect.STRESSED:
                 print(f"  {enemy.name}'s stress fades.")
 
 
 def use_item_in_combat(player):
     """Use a consumable item during combat. Returns True if item was used."""
     usable = []
-    if player.has_item('first aid kit'):
-        usable.append(('first aid kit', 'Restore 20 HP'))
-    for food in ('food supplies', 'energy bars'):
+    if player.has_item(ItemId.FIRST_AID_KIT):
+        usable.append((ItemId.FIRST_AID_KIT, 'Restore 20 HP'))
+    for food in (ItemId.FOOD_SUPPLIES, ItemId.ENERGY_BARS):
         if player.has_item(food):
             usable.append((food, 'Restore 10 HP'))
             break
-    for water in ('water bottle', 'bottled water'):
+    for water in (ItemId.WATER_BOTTLE, ItemId.BOTTLED_WATER):
         if player.has_item(water):
             usable.append((water, 'Restore 5 HP, reduces stress'))
             break
@@ -665,11 +749,11 @@ def use_item_in_combat(player):
             c = int(raw)
             if 1 <= c <= len(usable):
                 item_name, _ = usable[c - 1]
-                if item_name == 'first aid kit':
+                if item_name == ItemId.FIRST_AID_KIT:
                     heal = min(20, player.max_hp - player.hp)
                     player.hp += heal
                     print(f"  You apply the first aid kit. +{heal} HP.")
-                    player.remove_item('first aid kit')
+                    player.remove_item(ItemId.FIRST_AID_KIT)
                 elif 'food' in item_name or 'bar' in item_name or 'bars' in item_name:
                     heal = min(10, player.max_hp - player.hp)
                     player.hp += heal
@@ -928,17 +1012,17 @@ TIMED_EVENTS = [
     (10, "The lights stutter — one quick pulse of darkness. Your pulse spikes with them.",
      None, None),
     (15, "Through the walls — slow. Rhythmic. Scratching.\nFrom somewhere west. Measured. Patient.",
-     None, 'heard_scratching'),
+     None, StoryFlag.HEARD_SCRATCHING),
     (20, "The walkie-talkie crackles once.\nStatic. A voice, barely audible:\n"
          "  '— anyone? If you can hear this —'\nIt cuts out before you can respond.",
-     'walkie-talkie', 'heard_first_signal'),
+     ItemId.WALKIE_TALKIE, StoryFlag.HEARD_FIRST_SIGNAL),
     (28, "A sound from outside. Far away — glass breaking.\nThen nothing.",
      None, None),
     (38, "The walkie-talkie comes alive. Clearer.\nA woman's voice — controlled:\n"
          "  'We have a camp. Northwest of the city. Frequency 7.4.\n"
          "   Don't come alone. Don't come infected.'\n"
          "The transmission repeats twice, then cuts.\n(Type RADIO to respond.)",
-     'walkie-talkie', 'heard_maya_broadcast'),
+     ItemId.WALKIE_TALKIE, StoryFlag.HEARD_MAYA_BROADCAST),
     (50, "The scratching from the west has stopped.\nSomehow that's worse.",
      None, None),
 ]
@@ -958,7 +1042,7 @@ def check_timed_events(player):
             separator()
             if flag:
                 player.story_flags[flag] = True
-            if flag == 'heard_maya_broadcast':
+            if flag == StoryFlag.HEARD_MAYA_BROADCAST:
                 player.add_note('people',
                     "Maya — survivor running a camp ~4km northwest. Frequency 7.4.")
 
@@ -973,60 +1057,60 @@ def get_room_description(room_name, rooms, player):
     addons = []
 
     if room_name == 'Basement':
-        if 'generator_started' in flags:
+        if StoryFlag.GENERATOR_STARTED in flags:
             addons.append(
                 "The generator hums in the alcove. The card reader on the\n"
                 "east lab door glows green — it's powered now."
             )
     elif room_name == 'Entrance Hall':
-        if 'quarantine_opened' in flags:
+        if StoryFlag.QUARANTINE_OPENED in flags:
             addons.append(
                 "The smell from the quarantine room drifts through from the living room."
             )
-        if 'knows_protagonist_is_subject_01' in flags:
+        if StoryFlag.KNOWS_PROTAGONIST_IS_SUBJECT_01 in flags:
             addons.append(
                 "The scratch marks at the base of the front door catch your eye.\n"
                 "Were any of them like you?"
             )
     elif room_name == 'Living Room':
-        if 'found_kristys_warning' in flags and 'quarantine_opened' not in flags:
+        if StoryFlag.FOUND_KRISTYS_WARNING in flags and StoryFlag.QUARANTINE_OPENED not in flags:
             addons.append(
                 "Kristy said the key was in the study.\n"
                 "The quarantine door to the west feels like a countdown."
             )
-        if 'quarantine_opened' in flags:
+        if StoryFlag.QUARANTINE_OPENED in flags:
             addons.append(
                 "The quarantine door stands open to the west.\n"
                 "The smell from inside reaches you here."
             )
     elif room_name == 'Study':
-        if ('knows_about_compound' in flags and
-                'found_mels_warning' in flags and
-                'heard_daniels_warning' in flags):
+        if (StoryFlag.KNOWS_ABOUT_COMPOUND in flags and
+                StoryFlag.FOUND_MELS_WARNING in flags and
+                StoryFlag.HEARD_DANIELS_WARNING in flags):
             addons.append(
                 "You've read enough to understand what happened here.\n"
                 "What was done. What you are."
             )
     elif room_name == 'Master Bedroom':
-        if 'bathroom_zombie_mercy' in flags:
+        if StoryFlag.BATHROOM_ZOMBIE_MERCY in flags:
             addons.append(
                 "The bathroom is silent now. You did what had to be done."
             )
-        if 'read_full_journal' in flags:
+        if StoryFlag.READ_FULL_JOURNAL in flags:
             addons.append(
                 "You understand now why Kristy stayed as long as she did."
             )
     elif room_name == 'Bathroom':
-        if 'bathroom_zombie_mercy' in flags:
+        if StoryFlag.BATHROOM_ZOMBIE_MERCY in flags:
             addons.append(
                 "The figure is gone. The bathtub has a stain it didn't have before."
             )
-        elif 'bathroom_zombie_left' in flags:
+        elif StoryFlag.BATHROOM_ZOMBIE_LEFT in flags:
             addons.append(
                 "It's still there. Still watching the door."
             )
     elif room_name == 'Lab Wing':
-        if 'read_medical_file' in flags:
+        if StoryFlag.READ_MEDICAL_FILE in flags:
             addons.append(
                 "You know what you were when you came in here.\n"
                 "You know what you are when you leave."
@@ -1685,12 +1769,12 @@ def action_examine(target, room_name, rooms, player):
 
     # V5: Bathroom zombie → combat encounter
     if room_name == 'Bathroom' and target in ('figure', 'zombie', 'person', 'body'):
-        if 'bathroom_zombie_resolved' not in player.story_flags:
+        if StoryFlag.BATHROOM_ZOMBIE_RESOLVED not in player.story_flags:
             _bathroom_zombie_encounter(room_name, rooms, player)
             return
         else:
             separator()
-            if 'bathroom_zombie_mercy' in player.story_flags:
+            if StoryFlag.BATHROOM_ZOMBIE_MERCY in player.story_flags:
                 print("There's nothing left to see here.\nWhat you did was necessary. You keep telling yourself that.")
             else:
                 print("It's still there. Still watching you from the floor.\nIt hasn't moved toward you. But it hasn't looked away either.")
@@ -1699,8 +1783,8 @@ def action_examine(target, room_name, rooms, player):
 
     # V6: Parlor armchair — hidden survivor note discovery
     if room_name == 'Parlor' and target in ('armchair', 'chair', 'cushion'):
-        if 'armchair_searched' not in player.story_flags:
-            player.story_flags['armchair_searched'] = True
+        if StoryFlag.ARMCHAIR_SEARCHED not in player.story_flags:
+            player.story_flags[StoryFlag.ARMCHAIR_SEARCHED] = True
             separator()
             fast_print(rooms['Parlor']['objects']['armchair'])
             print()
@@ -1719,7 +1803,7 @@ def action_examine(target, room_name, rooms, player):
 
     # V6: Master Bedroom closet — burst zombie
     if room_name == 'Master Bedroom' and target in ('closet',):
-        if 'closet_zombie_resolved' not in player.story_flags:
+        if StoryFlag.CLOSET_ZOMBIE_RESOLVED not in player.story_flags:
             _closet_zombie_encounter(player, rooms)
             return
         else:
@@ -1738,7 +1822,7 @@ def action_examine(target, room_name, rooms, player):
     # Generator interaction
     if target in ('generator',) and room_name == 'Basement':
         separator()
-        if 'generator_started' in player.story_flags:
+        if StoryFlag.GENERATOR_STARTED in player.story_flags:
             print("The generator runs steadily. The lab door to the east is powered.")
         else:
             print(rooms['Basement']['objects']['generator'])
@@ -1817,14 +1901,14 @@ def action_read(target, room_name, rooms, player):
 def _on_read(doc_name, player):
     """Story flags and hidden stat shifts triggered by reading documents."""
     if doc_name == "mel's notebook":
-        player.story_flags['found_mels_warning'] = True
+        player.story_flags[StoryFlag.FOUND_MELS_WARNING] = True
         player.hidden_stats['Mental Stability'] -= 1
         player.add_note('people',
             "Dr. Mel Peoples (Mel) — left a warning: Barbados is no longer human. He didn't make it out.")
 
     if doc_name == "research log":
-        player.story_flags['knows_about_compound']             = True
-        player.story_flags['knows_protagonist_is_subject_01']  = True
+        player.story_flags[StoryFlag.KNOWS_ABOUT_COMPOUND]             = True
+        player.story_flags[StoryFlag.KNOWS_PROTAGONIST_IS_SUBJECT_01]  = True
         slow_print("\n[Something about 'Subject 01' hits differently.]")
         player.add_note('clues',
             "The research log mentions 'Subject 01 — stable, alive, different.' You may be Subject 01.")
@@ -1832,33 +1916,33 @@ def _on_read(doc_name, player):
             "Dr. Andre Barbados — self-administered the compound (Subject 02). Results: catastrophic.")
 
     if doc_name == "elias's diary page":
-        player.story_flags['knows_barbados_self_injected'] = True
+        player.story_flags[StoryFlag.KNOWS_BARBADOS_SELF_INJECTED] = True
         player.add_note('people',
             "Elias March — Patient #1. Came for terminal cancer treatment. Sensed something was wrong.")
 
     if doc_name == "kristy's letter":
-        player.story_flags['found_kristys_warning'] = True
-        player.story_flags['knows_key_in_study']    = True
+        player.story_flags[StoryFlag.FOUND_KRISTYS_WARNING] = True
+        player.story_flags[StoryFlag.KNOWS_KEY_IN_STUDY]    = True
         player.add_note('people',
             "Dr. Kristy O'Hara (Kristy) — locked Barbados in the quarantine room. Didn't make it out.")
         player.add_note('clues',
             "The quarantine key is in the study.")
 
     if doc_name == "voice recorder":
-        player.story_flags['heard_daniels_warning'] = True
+        player.story_flags[StoryFlag.HEARD_DANIELS_WARNING] = True
         player.hidden_stats['Alpha Awareness']      += 1
         player.add_note('people',
             "Daniel Everett — lab assistant. Tried to destroy the compound samples. Failed.")
 
     if doc_name == "kristy's journal":
-        player.story_flags['read_full_journal']     = True
+        player.story_flags[StoryFlag.READ_FULL_JOURNAL]     = True
         player.hidden_stats['Alpha Awareness']      += 2
         player.add_note('clues',
             "Barbados isn't trying to escape the quarantine room — he's practicing. Learning.")
 
     if doc_name == "medical file":
-        player.story_flags['read_medical_file']     = True
-        player.story_flags['knows_full_truth']      = True
+        player.story_flags[StoryFlag.READ_MEDICAL_FILE]     = True
+        player.story_flags[StoryFlag.KNOWS_FULL_TRUTH]      = True
         player.hidden_stats['Alpha Awareness']      += 3
         player.hidden_stats['Mental Stability']     = max(0,
             player.hidden_stats['Mental Stability'] - 2)
@@ -1869,11 +1953,11 @@ def _on_read(doc_name, player):
             "You are not infected. The compound made you something new entirely. Irreversible.")
 
     if doc_name == "sample case":
-        player.story_flags['knows_compound_irreversible'] = True
+        player.story_flags[StoryFlag.KNOWS_COMPOUND_IRREVERSIBLE] = True
         player.hidden_stats['Alpha Awareness']            += 1
 
     if doc_name == "survivor note":
-        player.story_flags['found_survivor_note'] = True
+        player.story_flags[StoryFlag.FOUND_SURVIVOR_NOTE] = True
         player.add_note('people',
             "Thomas Halley — delivery driver. Sheltered here after the outbreak. Sat in the Parlor armchair. Didn't make it.")
         player.add_note('clues',
@@ -1898,7 +1982,7 @@ def _on_pickup(item_name, player):
             player.unlock_substat('First Aid', 1)
             print("[First Aid substat unlocked.]")
     if item_name == "walkie-talkie":
-        player.story_flags['has_comms'] = True
+        player.story_flags[StoryFlag.HAS_COMMS] = True
         slow_print("It hisses with static. Something is out there on the frequencies.")
         player.add_note('clues',
             "You have a walkie-talkie. Something might be on the frequencies.")
@@ -1932,23 +2016,23 @@ def action_go(direction, room_name, rooms, player):
         target_room = locked[direction]
 
         if target_room == 'Quarantine Room':
-            if player.has_item('quarantine key'):
+            if player.has_item(ItemId.QUARANTINE_KEY):
                 slow_print("You slide the quarantine key into the lock. It turns.")
                 slow_print("The bolt slides back. You push the door open.")
                 slow_print("The smell hits you first.")
-                player.story_flags['quarantine_opened'] = True
+                player.story_flags[StoryFlag.QUARANTINE_OPENED] = True
                 exits[direction] = locked.pop(direction)
                 return target_room
             else:
                 print("The door is locked — bolt and keyhole both engaged.")
-                if 'found_kristys_warning' in player.story_flags:
+                if StoryFlag.FOUND_KRISTYS_WARNING in player.story_flags:
                     print("Kristy's letter said the key is in the study.")
                 else:
                     print("You can hear something on the other side. Slow. Deliberate.")
                 return room_name
 
         if target_room == 'Lab Wing':
-            if 'generator_started' in player.story_flags:
+            if StoryFlag.GENERATOR_STARTED in player.story_flags:
                 slow_print("The card reader glows green. You push the door open.")
                 exits[direction] = locked.pop(direction)
                 return target_room
@@ -1976,11 +2060,11 @@ def action_use(item, target, room_name, rooms, player):
             print(f"You're not carrying a '{item}'.")
             return
 
-    if 'flashlight' in item_lower and ('generator' in target_lower or not target_lower):
+    if ItemId.FLASHLIGHT in item_lower and ('generator' in target_lower or not target_lower):
         if room_name != 'Basement':
             print("There's nothing useful to light up here.")
             return
-        if 'generator_started' in player.story_flags:
+        if StoryFlag.GENERATOR_STARTED in player.story_flags:
             print("The generator is already running.")
             return
         if 'generator' not in player.examined:
@@ -1989,7 +2073,7 @@ def action_use(item, target, room_name, rooms, player):
         _start_generator(player, rooms)
         return
 
-    if 'flashlight' in item_lower:
+    if ItemId.FLASHLIGHT in item_lower:
         print("You click on the flashlight. The beam cuts sharply through the dark.")
         return
 
@@ -1997,7 +2081,7 @@ def action_use(item, target, room_name, rooms, player):
         slow_print("You eat. Your body accepts it with something close to relief.")
         player.survival['hunger'] = min(100, player.survival['hunger'] + 35)
         player.hp = min(player.max_hp, player.hp + 10)
-        for fname in ('food supplies', 'energy bars', 'energy bar'):
+        for fname in (ItemId.FOOD_SUPPLIES, ItemId.ENERGY_BARS, 'energy bar'):
             if player.remove_item(fname):
                 break
         return
@@ -2006,7 +2090,7 @@ def action_use(item, target, room_name, rooms, player):
         slow_print("You drink. The dryness in your throat eases slightly.")
         player.survival['thirst'] = min(100, player.survival['thirst'] + 40)
         player.hp = min(player.max_hp, player.hp + 5)
-        for wname in ('water bottle', 'bottled water'):
+        for wname in (ItemId.WATER_BOTTLE, ItemId.BOTTLED_WATER):
             if player.remove_item(wname):
                 break
         return
@@ -2018,7 +2102,7 @@ def action_use(item, target, room_name, rooms, player):
         player.survival['stress'] = max(0, player.survival['stress'] - 20)
         return
 
-    if 'quarantine key' in item_lower:
+    if ItemId.QUARANTINE_KEY in item_lower:
         print("Try going west to use it on the quarantine room door.")
         return
 
@@ -2029,13 +2113,13 @@ def action_start(target, room_name, rooms, player):
     if room_name != 'Basement':
         print("There's nothing here to start.")
         return
-    if 'generator_started' in player.story_flags:
+    if StoryFlag.GENERATOR_STARTED in player.story_flags:
         print("The generator is already running.")
         return
     if 'generator' not in player.examined:
         print("Examine the generator before trying to start it.")
         return
-    if not player.has_item('flashlight'):
+    if not player.has_item(ItemId.FLASHLIGHT):
         print("You need better light to see the pull cord clearly.\nTry: USE FLASHLIGHT ON GENERATOR")
         return
     _start_generator(player, rooms)
@@ -2061,7 +2145,7 @@ def _start_generator(player, rooms):
     print()
     slow_print("Lab Wing — now accessible.")
     separator()
-    player.story_flags['generator_started'] = True
+    player.story_flags[StoryFlag.GENERATOR_STARTED] = True
     if not player.substats['Mechanics']['unlocked']:
         player.unlock_substat('Mechanics', 1)
         print("[Mechanics substat unlocked.]")
@@ -2072,14 +2156,14 @@ def _start_generator(player, rooms):
 
 def action_eat(target, rooms, room_name, player):
     if any(w in target for w in ('food', 'bar', 'energy', 'supplies', 'tin', 'can')):
-        action_use('food supplies', None, room_name, rooms, player)
+        action_use(ItemId.FOOD_SUPPLIES, None, room_name, rooms, player)
     else:
         print(f"You don't have any '{target}' to eat.")
 
 
 def action_drink(target, rooms, room_name, player):
     if any(w in target for w in ('water', 'bottle', 'drink')):
-        action_use('water bottle', None, room_name, rooms, player)
+        action_use(ItemId.WATER_BOTTLE, None, room_name, rooms, player)
     else:
         print(f"You don't have any '{target}' to drink.")
 
@@ -2167,7 +2251,7 @@ ENCOUNTER_CONFIGS = {
     'entrance_hall': EncounterDef(
         encounter_id='entrance_hall',
         room='Entrance Hall',
-        gate_flag='entrance_hall_zombie_cleared',
+        gate_flag=StoryFlag.ENTRANCE_HALL_ZOMBIE_CLEARED,
         enemy_factory=make_entrance_zombie,
         intro_lines=[
             "A zombie — dead-eyed, slow — is blocking the hallway.\nIt turns toward you as you step off the stairs.",
@@ -2193,7 +2277,7 @@ ENCOUNTER_CONFIGS = {
     'kitchen': EncounterDef(
         encounter_id='kitchen',
         room='Kitchen',
-        gate_flag='kitchen_zombie_cleared',
+        gate_flag=StoryFlag.KITCHEN_ZOMBIE_CLEARED,
         enemy_factory=make_kitchen_zombie,
         intro_lines=[
             "Something is moving near the stripped cabinets.\nA zombie in torn clothes — scavenging through the empty shelves.\nIt hasn't heard you yet. But it will.",
@@ -2209,7 +2293,7 @@ ENCOUNTER_CONFIGS = {
     'study': EncounterDef(
         encounter_id='study',
         room='Study',
-        gate_flag='study_zombie_cleared',
+        gate_flag=StoryFlag.STUDY_ZOMBIE_CLEARED,
         enemy_factory=make_study_zombie,
         intro_lines=[
             "There's a zombie at the research desk.\nIt's hunched over the notes — almost like it's reading them.\nIt turns toward you as you enter.",
@@ -2239,7 +2323,7 @@ def run_room_entry_configured_encounters(current_room, player, rooms):
 
 def _living_room_zombie_encounter(player, rooms):
     """Standard Zombie in the Living Room — triggers once on first entry."""
-    if 'living_room_zombie_cleared' in player.story_flags:
+    if StoryFlag.LIVING_ROOM_ZOMBIE_CLEARED in player.story_flags:
         return
 
     separator()
@@ -2260,7 +2344,7 @@ def _living_room_zombie_encounter(player, rooms):
         separator()
         slow_print("The room is clear. Your pulse is hammering.")
         slow_print("That was real. That just happened.")
-        player.story_flags['living_room_zombie_cleared'] = True
+        player.story_flags[StoryFlag.LIVING_ROOM_ZOMBIE_CLEARED] = True
         player.hidden_stats['Survival Skill'] += 1
         player.add_note('clues',
             "You can fight. Remember that.")
@@ -2269,7 +2353,7 @@ def _living_room_zombie_encounter(player, rooms):
         separator()
         slow_print("You back off — the zombie loses interest for a moment.")
         slow_print("The living room is still accessible, but be ready.")
-        player.story_flags['living_room_zombie_cleared'] = True
+        player.story_flags[StoryFlag.LIVING_ROOM_ZOMBIE_CLEARED] = True
         separator()
     elif result == 'lose':
         separator()
@@ -2305,9 +2389,9 @@ def _bathroom_zombie_encounter(room_name, rooms, player):
         slow_print("Your hands won't stop shaking.")
         slow_print("You weren't sure you could do that.")
         slow_print("Now you know.")
-        player.story_flags['bathroom_zombie_resolved'] = True
-        player.story_flags['bathroom_zombie_mercy']    = True
-        player.story_flags['showed_mercy']             = True
+        player.story_flags[StoryFlag.BATHROOM_ZOMBIE_RESOLVED] = True
+        player.story_flags[StoryFlag.BATHROOM_ZOMBIE_MERCY]    = True
+        player.story_flags[StoryFlag.SHOWED_MERCY]             = True
         player.hidden_stats['Mental Stability']        = max(0, player.hidden_stats['Mental Stability'] - 2)
         player.hidden_stats['Alpha Awareness']         += 1
         player.hidden_stats['Survival Skill']          += 1
@@ -2320,8 +2404,8 @@ def _bathroom_zombie_encounter(room_name, rooms, player):
         separator()
         slow_print("You back out of the bathroom, pulse slamming.")
         slow_print("It watches you leave. Something in those clouded eyes tracks you\nall the way to the door.")
-        player.story_flags['bathroom_zombie_resolved'] = True
-        player.story_flags['bathroom_zombie_left']     = True
+        player.story_flags[StoryFlag.BATHROOM_ZOMBIE_RESOLVED] = True
+        player.story_flags[StoryFlag.BATHROOM_ZOMBIE_LEFT]     = True
         player.hidden_stats['Mental Stability']        = max(0, player.hidden_stats['Mental Stability'] - 1)
         separator()
 
@@ -2369,13 +2453,13 @@ def _closet_zombie_encounter(player, rooms):
         separator()
         slow_print("It goes down. Your heart is hammering.")
         slow_print("The closet is clear now.")
-        player.story_flags['closet_zombie_resolved'] = True
+        player.story_flags[StoryFlag.CLOSET_ZOMBIE_RESOLVED] = True
         player.hidden_stats['Survival Skill'] += 1
         separator()
     elif result == 'escaped':
         separator()
         slow_print("You scramble back — it doesn't follow far.")
-        player.story_flags['closet_zombie_resolved'] = True
+        player.story_flags[StoryFlag.CLOSET_ZOMBIE_RESOLVED] = True
         separator()
     elif result == 'lose':
         separator()
@@ -2387,7 +2471,7 @@ def _closet_zombie_encounter(player, rooms):
 
 def _lab_zombie_encounter(player, rooms):
     """Lab technician zombie in the Lab Wing — first entry."""
-    if 'lab_zombie_cleared' in player.story_flags:
+    if StoryFlag.LAB_ZOMBIE_CLEARED in player.story_flags:
         return
     separator()
     slow_print(
@@ -2402,7 +2486,7 @@ def _lab_zombie_encounter(player, rooms):
     result = combat_loop(player, enemy)
     if result in ('win', 'escaped'):
         slow_print("The lab is clear." if result == 'win' else "You retreat — it stays in the lab.")
-        player.story_flags['lab_zombie_cleared'] = True
+        player.story_flags[StoryFlag.LAB_ZOMBIE_CLEARED] = True
         if result == 'win':
             player.hidden_stats['Survival Skill'] += 1
             player.hidden_stats['Alpha Awareness'] += 1
@@ -2460,14 +2544,14 @@ def encounter_barbados(player, rooms):
     print()
     time.sleep(0.7)
 
-    knows_full    = 'knows_full_truth'                  in player.story_flags
-    has_camp      = 'knows_camp_location'               in player.story_flags
-    read_warning  = 'found_kristys_warning'             in player.story_flags
-    knows_truth   = 'knows_barbados_self_injected'      in player.story_flags
-    knows_comp    = 'knows_protagonist_is_subject_01'   in player.story_flags
-    showed_mercy  = 'showed_mercy'                      in player.story_flags
-    told_unknown  = 'told_maya_unknown'                 in player.story_flags
-    told_clean    = 'told_maya_clean'                   in player.story_flags
+    knows_full    = StoryFlag.KNOWS_FULL_TRUTH                  in player.story_flags
+    has_camp      = StoryFlag.KNOWS_CAMP_LOCATION               in player.story_flags
+    read_warning  = StoryFlag.FOUND_KRISTYS_WARNING             in player.story_flags
+    knows_truth   = StoryFlag.KNOWS_BARBADOS_SELF_INJECTED      in player.story_flags
+    knows_comp    = StoryFlag.KNOWS_PROTAGONIST_IS_SUBJECT_01   in player.story_flags
+    showed_mercy  = StoryFlag.SHOWED_MERCY                      in player.story_flags
+    told_unknown  = StoryFlag.TOLD_MAYA_UNKNOWN                 in player.story_flags
+    told_clean    = StoryFlag.TOLD_MAYA_CLEAN                   in player.story_flags
 
     # ── BEST ENDING: full truth + knows the way out ──
     if knows_full and has_camp:
@@ -2541,12 +2625,12 @@ def _ending_title(title):
 # ============================================================
 
 def action_radio(player):
-    if not player.has_item('walkie-talkie'):
+    if not player.has_item(ItemId.WALKIE_TALKIE):
         print("You're not carrying anything to broadcast on.")
         return
 
-    if ('heard_first_signal' not in player.story_flags and
-            'heard_maya_broadcast' not in player.story_flags):
+    if (StoryFlag.HEARD_FIRST_SIGNAL not in player.story_flags and
+            StoryFlag.HEARD_MAYA_BROADCAST not in player.story_flags):
         print("Only static. You haven't picked up a signal yet.")
         return
 
@@ -2557,7 +2641,7 @@ def action_radio(player):
     separator()
     player.last_radio_turn = player.turns
 
-    if 'maya_responded' not in player.story_flags:
+    if StoryFlag.MAYA_RESPONDED not in player.story_flags:
         slow_print("You key the transmit button. Your voice sounds strange to your ears.")
         slow_print(
             "  'Hello — is anyone out there? I just woke up in some kind\n"
@@ -2602,18 +2686,18 @@ def action_radio(player):
                 "  [MAYA]: 'Good. Then get out of there.\n"
                 "   We'll have a team ready when you arrive.'"
             )
-            player.story_flags['told_maya_clean'] = True
+            player.story_flags[StoryFlag.TOLD_MAYA_CLEAN] = True
         else:
             slow_print(
                 "  [MAYA]: '...\n"
                 "   Then you might be exactly who we've been looking for.\n"
                 "   Get out of there. Come to us. There are things you need to know.'"
             )
-            player.story_flags['told_maya_unknown'] = True
+            player.story_flags[StoryFlag.TOLD_MAYA_UNKNOWN] = True
             player.hidden_stats['Alpha Awareness']  += 1
 
-        player.story_flags['maya_responded']      = True
-        player.story_flags['knows_camp_location']  = True
+        player.story_flags[StoryFlag.MAYA_RESPONDED]      = True
+        player.story_flags[StoryFlag.KNOWS_CAMP_LOCATION]  = True
         player.add_note('people',
             "Maya — survivor. Running a camp ~4km northwest. Frequency 7.4. She told you where you are.")
         player.add_note('clues',
@@ -2695,25 +2779,25 @@ def action_hint(room_name, player):
 
     hints = []
 
-    if not player.has_item('flashlight') and room_name == 'Basement':
+    if not player.has_item(ItemId.FLASHLIGHT) and room_name == 'Basement':
         hints.append("There are items in this room — try GET to pick them up.")
-    if player.has_item('quarantine key') and 'quarantine_opened' not in flags:
+    if player.has_item(ItemId.QUARANTINE_KEY) and StoryFlag.QUARANTINE_OPENED not in flags:
         hints.append("You have the quarantine key. The quarantine room is west of the living room.")
-    if 'knows_key_in_study' in flags and not player.has_item('quarantine key'):
+    if StoryFlag.KNOWS_KEY_IN_STUDY in flags and not player.has_item(ItemId.QUARANTINE_KEY):
         hints.append("Kristy's letter said the quarantine key is in the study. The study is east of the kitchen.")
-    if 'generator_started' not in flags and room_name == 'Basement':
+    if StoryFlag.GENERATOR_STARTED not in flags and room_name == 'Basement':
         hints.append("The generator is in this room. EXAMINE it, then USE FLASHLIGHT ON GENERATOR to start it.")
-    if player.has_item('walkie-talkie') and 'maya_responded' not in flags and 'heard_first_signal' in flags:
+    if player.has_item(ItemId.WALKIE_TALKIE) and StoryFlag.MAYA_RESPONDED not in flags and StoryFlag.HEARD_FIRST_SIGNAL in flags:
         hints.append("You picked up a signal on the walkie-talkie. Try RADIO to respond.")
     if not player.notes['people']:
         hints.append("Try READING the documents you find. They'll fill in your NOTES automatically.")
     if len(player.visited_rooms) < 4:
         hints.append("Use PEEK [direction] to preview a room before entering it.")
-    if 'bathroom_zombie_resolved' not in flags and room_name == 'Bathroom':
+    if StoryFlag.BATHROOM_ZOMBIE_RESOLVED not in flags and room_name == 'Bathroom':
         hints.append("EXAMINE the figure — it's a combat encounter, not just atmosphere.")
-    if room_name == 'Study' and not player.has_item('quarantine key'):
+    if room_name == 'Study' and not player.has_item(ItemId.QUARANTINE_KEY):
         hints.append("There's a quarantine key in this room. GET it.")
-    if room_name == 'Living Room' and 'found_kristys_warning' not in flags:
+    if room_name == 'Living Room' and StoryFlag.FOUND_KRISTYS_WARNING not in flags:
         hints.append("There's a letter on the floor. You can READ it here — no need to pick it up first.")
     if player.hp < player.max_hp // 2:
         hints.append("Your HP is low. Use a first aid kit or food to recover before the next fight.")
