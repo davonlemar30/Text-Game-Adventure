@@ -1,63 +1,123 @@
-# 🧟 ZOMBIE APOCALYPSE: THE MANSION — V2.0
+# 🧟 ZOMBIE APOCALYPSE: THE MANSION — V6.0
 
-### Text Adventure RPG | Davon Gass
+### Text Adventure Survival Horror RPG | Davon Gass
 
 ---
 
 ## 🧠 Overview
 
-Step into a deeply immersive survival horror experience where every choice matters.
+**Zombie Apocalypse: The Mansion (V6.0)** is a terminal-based survival horror RPG built in Python.
 
-**Zombie Apocalypse: The Mansion (V2.0)** is a Python-based text adventure RPG that goes beyond simple navigation — introducing **survival mechanics, narrative discovery, and multiple endings**.
+What begins as a search for escape quickly turns into something deeper…
 
-You are not just escaping anymore.
+You are not just surviving a mansion.
 
-You are **learning what happened… and deciding how it ends.**
-
----
-
-## 🔥 What’s New in V2.0
-
-* 🧠 **Full Command Parser**
-
-  * `look`, `examine`, `read`, `use X on Y`, `drop`, `eat`, `drink`
-* 🏚️ **Expanded Mansion (10 Rooms)**
-
-  * Fully detailed environments with immersive descriptions
-* 📜 **Narrative System**
-
-  * 6 readable documents that reveal the story
-* 🎭 **Story Flags**
-
-  * Your discoveries influence outcomes
-* 📊 **Hidden Stats System**
-
-  * Mental Stability
-  * Alpha Awareness
-  * Survival Skill
-* 🍞 **Survival Mechanics**
-
-  * Hunger & thirst can kill you
-  * Food and water are now essential
-* 🧟 **Alpha Zombie Evolution**
-
-  * Awareness system tied to your actions
-* 🔚 **Multiple Endings**
-
-  * Your knowledge + preparation determines survival
+You are navigating a **living system of infection, awareness, and psychological decay** — where your actions shape both the world and what’s watching you.
 
 ---
 
-## 🎮 How to Play
+## 🔥 What’s New in V6.0
 
-You begin inside a quarantined mansion filled with remnants of a failed containment effort.
+### ⚔️ Combat System (NEW CORE FEATURE)
 
-Your goal:
+* Turn-based combat system with player vs enemy encounters
+* Player stats: **HP, Attack, Defense**
+* Multiple combat actions:
 
-* **Explore**
-* **Survive**
-* **Uncover the truth**
-* **Escape… if you can**
+  * `strike`
+  * `guard`
+  * `flash`
+* Combat outcomes directly impact survival and progression
+
+---
+
+### 🧟 Enemy System
+
+* Multiple enemy types with unique behaviors:
+
+  * Shambler
+  * Scavenger
+  * Researcher
+  * Lab Tech
+* Each enemy has different stats, attack patterns, and effects
+* Encounters are tied to specific rooms
+
+---
+
+### ☣️ Status Effects System
+
+Combat and exploration now affect your condition:
+
+* **Blinded** – reduced effectiveness
+* **Infected** – damage over time
+* **Stressed** – impacts decisions
+* **Suppressed / Steadied** – defensive states
+
+---
+
+### 🧬 Combat Typing System
+
+Adds depth to encounters:
+
+* Brute
+* Alpha
+* Psyche
+* Bio
+* Stealth
+
+---
+
+### 🧟‍♂️ Boss System Upgrade
+
+* **Barbados (Alpha Zombie)** fully redesigned
+* Priority-based attacks and more dynamic behavior
+* Final encounter now feels like a true boss fight
+
+---
+
+### 🏚️ Dynamic World System
+
+* Room descriptions evolve based on:
+
+  * story progression
+  * player actions
+* Hidden triggers and environmental feedback
+
+---
+
+### 📡 Timed Events & Atmosphere
+
+* Ambient signals (radio, environmental cues)
+* Events that trigger based on time/actions
+* Increased tension and unpredictability
+
+---
+
+### 📜 Expanded Narrative System
+
+* Discoverable documents with deeper lore
+* Story flags that influence:
+
+  * world behavior
+  * available outcomes
+* Player Notes system to track discoveries
+
+---
+
+### 🎒 Inventory + Item Interaction Improvements
+
+* Items can now be used **inside and outside combat**
+* Healing, stress management, and survival tools integrated into gameplay loop
+
+---
+
+## 🎮 Core Gameplay Loop
+
+1. **Explore** the mansion
+2. **Engage** in combat encounters
+3. **Manage** your stats and condition
+4. **Discover** the truth behind the outbreak
+5. **Survive… or become part of it**
 
 ---
 
@@ -70,7 +130,7 @@ Your goal:
 * `go east`
 * `go west`
 
-### Interaction
+### Exploration
 
 * `look`
 * `examine [object]`
@@ -86,87 +146,97 @@ Your goal:
 * `eat [item]`
 * `drink [item]`
 
+### Combat
+
+* `strike`
+* `guard`
+* `flash`
+
 ### Advanced
 
 * `use [item] on [target]`
 
 ---
 
-## 📜 Story & Exploration
-
-Scattered throughout the mansion are documents that reveal what truly happened:
-
-* Mel’s Notebook
-* Research Log
-* Kristy’s Letter
-* Kristy’s Journal
-* Daniel’s Recorder
-* Elias’s Diary
-
-👉 Reading these is **not optional** — they directly impact your ending.
-
----
-
 ## 🏚️ Key Locations
 
 * Entrance Hall
-* Basement
-* Living Room
 * Kitchen
 * Study
-* Master Bedroom
-* Bathroom
-* Additional rooms with expanded design
-* 🧟 **Quarantine Room (Final Area)**
+* Bedroom
+* Lab Wing
+* Basement
+* Additional connected rooms
+* 🧟 **Quarantine Zone (Final Encounter Area)**
 
 ---
 
-## ⚠️ Survival System
+## ⚠️ Survival Systems
 
-You are not just exploring — you are **decaying over time**.
+This is not just a story — it's a system.
 
-* Hunger and thirst will **kill you**
-* Mental state affects perception
-* Your awareness of the Alpha Zombie can **trigger consequences**
+* Health determines survival in combat
+* Status effects can stack and overwhelm you
+* Resources must be used strategically
+* Your actions increase **Alpha Awareness**
+
+👉 The more you interact… the more the system reacts
 
 ---
 
 ## 🧪 Endings
 
-Your outcome depends on:
+Your ending is determined by:
 
-* What you discovered
-* What you ignored
-* How prepared you are
+* Combat success
+* Knowledge discovered
+* Resource management
+* System awareness
 
-👉 Not all survivors escape
-👉 Not all truths are safe
+👉 Not all players escape
+👉 Not all players understand what happened
 
 ---
 
 ## ⚙️ Installation
 
-1. Ensure Python is installed
-2. Download the game file
-3. Run:
+1. Ensure Python 3 is installed:
 
 ```bash
-python game_v2.py
+python3 --version
 ```
+
+2. Run the game:
+
+```bash
+python3 game_v6.py
+```
+
+---
+
+## 🚀 Future Vision
+
+Planned expansions:
+
+* Save system
+* Expanded map (open-world transition)
+* Faction system
+* Alpha mutation mechanics
+* Mobile/desktop app version
 
 ---
 
 ## 🤝 Contributing
 
-Want to expand the story, systems, or mechanics?
+Want to build onto the system?
 
 * Fork the repo
-* Make your changes
+* Create a feature branch
 * Submit a pull request
 
 ---
 
 ## 📜 License
 
-MyTextAdventure © 2024 by Davon
+MyTextAdventure © 2026 by Davon Gass
 Licensed under **CC BY-NC-ND 4.0**
