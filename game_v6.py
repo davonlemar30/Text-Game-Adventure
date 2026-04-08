@@ -21,6 +21,7 @@
 import sys
 import time
 import random
+from dataclasses import dataclass, field
 
 
 # ============================================================
@@ -196,6 +197,20 @@ class Enemy:
         self.guarded    = False
 
 
+def make_enemy(name, enemy_type, hp, attack, defense, speed, moves, is_boss=False):
+    """Small factory helper to reduce repeated Enemy(...) boilerplate."""
+    return Enemy(
+        name=name,
+        enemy_type=enemy_type,
+        hp=hp,
+        attack=attack,
+        defense=defense,
+        speed=speed,
+        moves=moves,
+        is_boss=is_boss,
+    )
+
+
 # ──────────────────────────────────────
 # Player move definitions
 # ──────────────────────────────────────
@@ -252,7 +267,7 @@ def get_available_moves(player):
 # ──────────────────────────────────────
 
 def make_standard_zombie():
-    return Enemy(
+    return make_enemy(
         name='Standard Zombie',
         enemy_type='Brute',
         hp=30, attack=8, defense=5, speed=4,
@@ -267,7 +282,7 @@ def make_standard_zombie():
 
 
 def make_patient_zombie():
-    return Enemy(
+    return make_enemy(
         name='Patient Zero',
         enemy_type='Bio',
         hp=35, attack=9, defense=5, speed=3,
@@ -282,7 +297,7 @@ def make_patient_zombie():
 
 
 def make_barbados():
-    return Enemy(
+    return make_enemy(
         name='Dr. Barbados',
         enemy_type='Alpha',
         hp=80, attack=20, defense=8, speed=9,
@@ -302,7 +317,7 @@ def make_barbados():
 
 def make_entrance_zombie():
     """Brute zombie blocking the Entrance Hall — first combat encounter."""
-    return Enemy(
+    return make_enemy(
         name='Shambler',
         enemy_type='Brute',
         hp=28, attack=8, defense=5, speed=4,
@@ -318,7 +333,7 @@ def make_entrance_zombie():
 
 def make_kitchen_zombie():
     """Scavenger zombie picked up in the kitchen."""
-    return Enemy(
+    return make_enemy(
         name='Scavenger',
         enemy_type='Brute',
         hp=30, attack=8, defense=5, speed=5,
@@ -334,7 +349,7 @@ def make_kitchen_zombie():
 
 def make_study_zombie():
     """Brute zombie hunched over the research papers."""
-    return Enemy(
+    return make_enemy(
         name='Researcher',
         enemy_type='Brute',
         hp=30, attack=9, defense=5, speed=3,
@@ -350,7 +365,7 @@ def make_study_zombie():
 
 def make_closet_zombie():
     """Burst zombie from Master Bedroom closet — priority first-turn lunge."""
-    return Enemy(
+    return make_enemy(
         name='Closet Zombie',
         enemy_type='Brute',
         hp=22, attack=10, defense=4, speed=8,
@@ -366,7 +381,7 @@ def make_closet_zombie():
 
 def make_lab_tech_zombie():
     """Infected lab technician — Bio type, more dangerous."""
-    return Enemy(
+    return make_enemy(
         name='Lab Technician',
         enemy_type='Bio',
         hp=40, attack=10, defense=6, speed=5,
@@ -2083,6 +2098,145 @@ def action_drop(target, room_name, rooms, player):
 # COMBAT ENCOUNTERS
 # ============================================================
 
+@dataclass
+class EncounterDef:
+    encounter_id: str
+    room: str
+    gate_flag: str
+    enemy_factory: callable
+    intro_lines: list
+    win_lines: list
+    escape_lines: list
+    lose_lines: list
+    rewards_on_win: dict = field(default_factory=dict)
+    rewards_on_escape: dict = field(default_factory=dict)
+    clear_on_escape: bool = True
+
+
+def _apply_encounter_rewards(player, rewards):
+    if not rewards:
+        return
+    for stat, delta in rewards.get('hidden_stats', {}).items():
+        player.hidden_stats[stat] = player.hidden_stats.get(stat, 0) + delta
+    for flag_name, flag_value in rewards.get('story_flags', {}).items():
+        player.story_flags[flag_name] = flag_value
+    for category, entry in rewards.get('notes', []):
+        player.add_note(category, entry)
+
+
+def resolve_configured_encounter(player, rooms, config):
+    """Generic encounter resolver driven entirely by encounter config."""
+    if config.gate_flag in player.story_flags:
+        return
+
+    separator()
+    for line in config.intro_lines:
+        slow_print(line)
+    separator()
+
+    enemy = config.enemy_factory()
+    result = combat_loop(player, enemy)
+
+    if result == 'win':
+        separator()
+        for line in config.win_lines:
+            slow_print(line)
+        player.story_flags[config.gate_flag] = True
+        _apply_encounter_rewards(player, config.rewards_on_win)
+        separator()
+        return
+
+    if result == 'escaped':
+        separator()
+        for line in config.escape_lines:
+            slow_print(line)
+        if config.clear_on_escape:
+            player.story_flags[config.gate_flag] = True
+        _apply_encounter_rewards(player, config.rewards_on_escape)
+        separator()
+        return
+
+    separator()
+    for line in config.lose_lines:
+        slow_print(line)
+    separator()
+    sys.exit()
+
+
+ENCOUNTER_CONFIGS = {
+    'entrance_hall': EncounterDef(
+        encounter_id='entrance_hall',
+        room='Entrance Hall',
+        gate_flag='entrance_hall_zombie_cleared',
+        enemy_factory=make_entrance_zombie,
+        intro_lines=[
+            "A zombie — dead-eyed, slow — is blocking the hallway.\nIt turns toward you as you step off the stairs.",
+            "This is your first fight. You don't have a choice.",
+        ],
+        win_lines=[
+            "The hallway is clear.",
+            "Your hands are shaking. Your pulse is loud in your ears.",
+            "But you're still standing.",
+        ],
+        escape_lines=[
+            "You back down the stairs — it loses interest.",
+        ],
+        lose_lines=[
+            "You go down in the entrance hall before you even started.",
+            "\n— GAME OVER —\n",
+        ],
+        rewards_on_win={
+            'hidden_stats': {'Survival Skill': 1},
+            'notes': [('clues', "You can fight. You should expect more.")],
+        },
+    ),
+    'kitchen': EncounterDef(
+        encounter_id='kitchen',
+        room='Kitchen',
+        gate_flag='kitchen_zombie_cleared',
+        enemy_factory=make_kitchen_zombie,
+        intro_lines=[
+            "Something is moving near the stripped cabinets.\nA zombie in torn clothes — scavenging through the empty shelves.\nIt hasn't heard you yet. But it will.",
+        ],
+        win_lines=["The kitchen is clear."],
+        escape_lines=["You slip out — it loses interest in you."],
+        lose_lines=[
+            "The kitchen floor is the last thing you see.",
+            "\n— GAME OVER —\n",
+        ],
+        rewards_on_win={'hidden_stats': {'Survival Skill': 1}},
+    ),
+    'study': EncounterDef(
+        encounter_id='study',
+        room='Study',
+        gate_flag='study_zombie_cleared',
+        enemy_factory=make_study_zombie,
+        intro_lines=[
+            "There's a zombie at the research desk.\nIt's hunched over the notes — almost like it's reading them.\nIt turns toward you as you enter.",
+        ],
+        win_lines=["The study is yours."],
+        escape_lines=["You back out — it doesn't follow."],
+        lose_lines=[
+            "The study floor is cold.",
+            "\n— GAME OVER —\n",
+        ],
+        rewards_on_win={'hidden_stats': {'Survival Skill': 1}},
+    ),
+}
+
+
+ROOM_ENTRY_CONFIG_ENCOUNTERS = {
+    'Entrance Hall': ['entrance_hall'],
+    'Kitchen': ['kitchen'],
+    'Study': ['study'],
+}
+
+
+def run_room_entry_configured_encounters(current_room, player, rooms):
+    for encounter_id in ROOM_ENTRY_CONFIG_ENCOUNTERS.get(current_room, []):
+        resolve_configured_encounter(player, rooms, ENCOUNTER_CONFIGS[encounter_id])
+
+
 def _living_room_zombie_encounter(player, rooms):
     """Standard Zombie in the Living Room — triggers once on first entry."""
     if 'living_room_zombie_cleared' in player.story_flags:
@@ -2185,96 +2339,18 @@ def _bathroom_zombie_encounter(room_name, rooms, player):
 # ============================================================
 
 def _entrance_hall_zombie_encounter(player, rooms):
-    """Unavoidable first combat encounter — teaches the system."""
-    if 'entrance_hall_zombie_cleared' in player.story_flags:
-        return
-    separator()
-    slow_print(
-        "A zombie — dead-eyed, slow — is blocking the hallway.\n"
-        "It turns toward you as you step off the stairs."
-    )
-    time.sleep(0.3)
-    slow_print("This is your first fight. You don't have a choice.")
-    time.sleep(0.2)
-    separator()
-    enemy  = make_entrance_zombie()
-    result = combat_loop(player, enemy)
-    if result == 'win':
-        separator()
-        slow_print("The hallway is clear.")
-        slow_print("Your hands are shaking. Your pulse is loud in your ears.")
-        slow_print("But you're still standing.")
-        player.story_flags['entrance_hall_zombie_cleared'] = True
-        player.hidden_stats['Survival Skill'] += 1
-        player.add_note('clues', "You can fight. You should expect more.")
-        separator()
-    elif result == 'escaped':
-        separator()
-        slow_print("You back down the stairs — it loses interest.")
-        player.story_flags['entrance_hall_zombie_cleared'] = True
-        separator()
-    elif result == 'lose':
-        separator()
-        slow_print("You go down in the entrance hall before you even started.")
-        slow_print("\n— GAME OVER —\n")
-        separator()
-        sys.exit()
+    """Config-driven first encounter."""
+    resolve_configured_encounter(player, rooms, ENCOUNTER_CONFIGS['entrance_hall'])
 
 
 def _kitchen_zombie_encounter(player, rooms):
-    """Scavenger zombie in the Kitchen — first entry."""
-    if 'kitchen_zombie_cleared' in player.story_flags:
-        return
-    separator()
-    slow_print(
-        "Something is moving near the stripped cabinets.\n"
-        "A zombie in torn clothes — scavenging through the empty shelves.\n"
-        "It hasn't heard you yet. But it will."
-    )
-    time.sleep(0.2)
-    separator()
-    enemy  = make_kitchen_zombie()
-    result = combat_loop(player, enemy)
-    if result in ('win', 'escaped'):
-        slow_print("The kitchen is clear." if result == 'win' else "You slip out — it loses interest in you.")
-        player.story_flags['kitchen_zombie_cleared'] = True
-        if result == 'win':
-            player.hidden_stats['Survival Skill'] += 1
-        separator()
-    elif result == 'lose':
-        separator()
-        slow_print("The kitchen floor is the last thing you see.")
-        slow_print("\n— GAME OVER —\n")
-        separator()
-        sys.exit()
+    """Config-driven kitchen encounter."""
+    resolve_configured_encounter(player, rooms, ENCOUNTER_CONFIGS['kitchen'])
 
 
 def _study_zombie_encounter(player, rooms):
-    """Zombie hunched over the research desk — first entry."""
-    if 'study_zombie_cleared' in player.story_flags:
-        return
-    separator()
-    slow_print(
-        "There's a zombie at the research desk.\n"
-        "It's hunched over the notes — almost like it's reading them.\n"
-        "It turns toward you as you enter."
-    )
-    time.sleep(0.2)
-    separator()
-    enemy  = make_study_zombie()
-    result = combat_loop(player, enemy)
-    if result in ('win', 'escaped'):
-        slow_print("The study is yours." if result == 'win' else "You back out — it doesn't follow.")
-        player.story_flags['study_zombie_cleared'] = True
-        if result == 'win':
-            player.hidden_stats['Survival Skill'] += 1
-        separator()
-    elif result == 'lose':
-        separator()
-        slow_print("The study floor is cold.")
-        slow_print("\n— GAME OVER —\n")
-        separator()
-        sys.exit()
+    """Config-driven study encounter."""
+    resolve_configured_encounter(player, rooms, ENCOUNTER_CONFIGS['study'])
 
 
 def _closet_zombie_encounter(player, rooms):
@@ -2872,15 +2948,11 @@ def main():
                 current = new_room
                 player.visited_rooms.add(current)
                 action_enter_room(current, rooms, player)
-                # V6: 8 combat encounters across the mansion
-                if current == 'Entrance Hall':
-                    _entrance_hall_zombie_encounter(player, rooms)
+                # Config-driven room-entry encounters (proof-of-concept)
+                run_room_entry_configured_encounters(current, player, rooms)
+                # Remaining bespoke encounters
                 if current == 'Living Room':
                     _living_room_zombie_encounter(player, rooms)
-                if current == 'Kitchen':
-                    _kitchen_zombie_encounter(player, rooms)
-                if current == 'Study':
-                    _study_zombie_encounter(player, rooms)
                 if current == 'Lab Wing':
                     _lab_zombie_encounter(player, rooms)
                 if current == 'Quarantine Room':
