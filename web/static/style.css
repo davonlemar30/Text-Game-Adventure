@@ -1,0 +1,206 @@
+:root {
+  --bg:      #05070a;
+  --panel:   #0a0e12;
+  --edge:    #16281c;
+  --text:    #9fe6b0;
+  --bright:  #d6ffe2;
+  --dim:     #4b7256;
+  --accent:  #7ad98f;
+  --danger:  #d9564f;
+  --mono: ui-monospace, "SF Mono", Menlo, Monaco, "Cascadia Mono", monospace;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overscroll-behavior: none;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 15px;
+  line-height: 1.45;
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Scanlines. Subtle — this is a horror game, not a screensaver. */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 10;
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0) 0px,
+    rgba(0, 0, 0, 0) 2px,
+    rgba(0, 0, 0, 0.16) 3px,
+    rgba(0, 0, 0, 0.16) 4px
+  );
+}
+
+/* ── top bar ───────────────────────────────────────────── */
+
+#bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  padding-top: calc(8px + env(safe-area-inset-top));
+  padding-left: calc(12px + env(safe-area-inset-left));
+  padding-right: calc(12px + env(safe-area-inset-right));
+  background: var(--panel);
+  border-bottom: 1px solid var(--edge);
+}
+
+#title {
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  color: var(--accent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dim { color: var(--dim); }
+
+#restart {
+  flex: none;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  color: var(--dim);
+  background: transparent;
+  border: 1px solid var(--edge);
+  border-radius: 4px;
+  padding: 5px 10px;
+}
+
+#restart:active { color: var(--danger); border-color: var(--danger); }
+
+/* ── transcript ────────────────────────────────────────── */
+
+#log {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 14px 12px 20px;
+  padding-left: calc(12px + env(safe-area-inset-left));
+  padding-right: calc(12px + env(safe-area-inset-right));
+  white-space: pre-wrap;
+  word-break: break-word;
+  text-shadow: 0 0 6px rgba(122, 217, 143, 0.25);
+}
+
+/* The ASCII map and HP bars must not wrap — let them scroll instead. */
+#log .fixed {
+  display: block;
+  white-space: pre;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+#log .echo { color: var(--bright); }
+
+/* ── controls ──────────────────────────────────────────── */
+
+#controls {
+  flex: none;
+  background: var(--panel);
+  border-top: 1px solid var(--edge);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+#chips {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  padding: 8px 12px 2px;
+  padding-left: calc(12px + env(safe-area-inset-left));
+  padding-right: calc(12px + env(safe-area-inset-right));
+}
+
+#chips::-webkit-scrollbar { display: none; }
+
+#chips button {
+  flex: none;
+  font-family: var(--mono);
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  color: var(--text);
+  background: #0f1620;
+  border: 1px solid var(--edge);
+  border-radius: 6px;
+  padding: 9px 13px;
+  min-height: 38px;
+}
+
+#chips button:active {
+  color: var(--bg);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+#chips button.wide { flex: 1 0 auto; text-align: center; }
+
+#entry {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px 10px;
+  padding-left: calc(12px + env(safe-area-inset-left));
+  padding-right: calc(12px + env(safe-area-inset-right));
+}
+
+.caret {
+  flex: none;
+  color: var(--accent);
+  font-size: 16px;
+}
+
+#cmd {
+  flex: 1 1 auto;
+  min-width: 0;
+  /* 16px or iOS Safari zooms the page on focus. Do not shrink this. */
+  font-size: 16px;
+  font-family: var(--mono);
+  color: var(--bright);
+  background: #0f1620;
+  border: 1px solid var(--edge);
+  border-radius: 6px;
+  padding: 10px 12px;
+}
+
+#cmd::placeholder { color: var(--dim); }
+#cmd:focus { outline: none; border-color: var(--accent); }
+
+#send {
+  flex: none;
+  font-family: var(--mono);
+  font-size: 13px;
+  letter-spacing: 0.1em;
+  color: var(--bg);
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  padding: 11px 16px;
+  min-height: 42px;
+}
+
+#send:active { background: var(--text); }
+
+body.done #cmd, body.done #send { opacity: 0.4; }

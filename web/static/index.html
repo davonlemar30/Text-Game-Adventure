@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="The Mansion">
+<meta name="theme-color" content="#05070a">
+<meta name="format-detection" content="telephone=no">
+<link rel="manifest" href="/static/manifest.webmanifest">
+<link rel="stylesheet" href="/static/style.css">
+<title>Zombie Apocalypse: The Mansion</title>
+</head>
+<body>
+
+<header id="bar">
+  <span id="title">ZOMBIE APOCALYPSE<span class="dim"> :: THE MANSION</span></span>
+  <button id="restart" type="button">RESTART</button>
+</header>
+
+<main id="log" aria-live="polite"></main>
+
+<footer id="controls">
+  <div id="chips"></div>
+  <form id="entry" autocomplete="off">
+    <span class="caret">&gt;</span>
+    <input id="cmd" type="text" name="cmd"
+           autocapitalize="off" autocorrect="off" autocomplete="off"
+           spellcheck="false" enterkeyhint="go" placeholder="what do you do?">
+    <button id="send" type="submit">GO</button>
+  </form>
+</footer>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
