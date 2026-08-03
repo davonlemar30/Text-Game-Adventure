@@ -214,6 +214,41 @@ python3 game_v6.py
 
 ---
 
+## 📱 Playing on a phone
+
+Three ways to run the same game. All of them run `game_v6.py` itself — no fork,
+no rewrite.
+
+**In a browser, no server** — the real answer for phones. Python is compiled to
+WebAssembly and runs in the page.
+
+```bash
+python3 tools/build_browser.py
+python3 tools/serve_dist.py
+```
+
+Deploys to Cloudflare Pages as a static site. See `browser/README.md`.
+
+**On your local network** — fastest loop while developing.
+
+```bash
+python3 -m web.server
+```
+
+Prints an address to open on your phone, same Wi-Fi. See `web/README.md`.
+
+**In a terminal** — `python3 game_v6.py`, as always.
+
+---
+
+## 💾 Saving
+
+The game saves every turn. Start it again and it offers to pick the run back up.
+`SAVE` and `LOAD` also work as commands. Saves go to `savegame.json` on desktop,
+and to browser storage in the browser build.
+
+---
+
 ## 🚀 Future Vision
 
 Planned expansions:

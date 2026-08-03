@@ -18,6 +18,7 @@ _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
+import runtime  # noqa: E402
 from web.session import CONSOLE, GameSession  # noqa: E402
 
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static')
@@ -41,6 +42,7 @@ def reset_session():
     with _session_lock:
         if _session is not None:
             _session.stop()
+        runtime.clear_save()   # RESTART means start over, not resume
         _session = GameSession()
         _session.start()
         return _session

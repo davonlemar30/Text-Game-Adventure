@@ -23,6 +23,8 @@ import time
 import random
 from dataclasses import dataclass, field
 
+import runtime
+
 
 # ============================================================
 # CANONICAL IDS / CONSTANTS (single source of truth)
@@ -1148,6 +1150,8 @@ def parse(raw_input):
     if text in ('notes', 'codex', 'journal', 'log'): return ('notes', None)
     if text in ('map', 'layout', 'floorplan'):       return ('map', None)
     if text in ('hint', 'hints'):                    return ('hint', None)
+    if text in ('save', 'save game'):                return ('save', None)
+    if text in ('load', 'load game', 'continue', 'resume'): return ('load', None)
     if text in ('radio', 'respond', 'broadcast',
                 'call out', 'transmit', 'answer radio'): return ('radio', None)
 
@@ -2482,6 +2486,8 @@ def show_help():
     print("  map                            ASCII map of rooms you've visited")
     print("  hint                           contextual nudge if you're stuck")
     print("  help                           this screen")
+    print("  save                           save your run (it also saves every turn)")
+    print("  load                           go back to your last save")
     print("  quit                           exit")
     separator()
 
@@ -2490,12 +2496,42 @@ def show_help():
 # MAIN LOOP
 # ============================================================
 
-def main():
-    opening_scene()
+def _offer_resume():
+    """Numbered so it works from a touch screen. Returns the restored run, or None."""
+    separator()
+    print("A previous run is still here.\n")
+    print("  [1] Pick it back up")
+    print("  [2] Start over")
+    print()
 
-    player  = Player()
-    rooms   = build_rooms()
-    current = 'Basement'
+    while True:
+        try:
+            choice = input("  > ").strip()
+        except (EOFError, KeyboardInterrupt):
+            return None
+        if choice == '2':
+            return None
+        if choice == '1':
+            result, err = runtime.load_game()
+            if err:
+                print(f"  That save can't be read ({err}). Starting over.")
+                return None
+            return result
+        print("  Choose 1 or 2.")
+
+
+def main():
+    # Asked before the opening scene, so picking a run back up on a phone is
+    # two taps rather than a wait.
+    resumed = _offer_resume() if runtime.has_save() else None
+
+    if resumed:
+        player, rooms, current = resumed
+    else:
+        opening_scene()
+        player  = Player()
+        rooms   = build_rooms()
+        current = 'Basement'
 
     player.visited_rooms.add(current)
     action_enter_room(current, rooms, player)
@@ -2560,6 +2596,19 @@ def main():
 
         elif verb == 'hint':
             action_hint(current, player)
+
+        elif verb == 'save':
+            err = runtime.save_game(player, rooms, current)
+            print("Saved." if err is None else f"Couldn't save: {err}")
+
+        elif verb == 'load':
+            result, err = runtime.load_game()
+            if err:
+                print(f"Couldn't load: {err}")
+            else:
+                player, rooms, current = result
+                print("You pick up where you left off.")
+                action_enter_room(current, rooms, player)
 
         elif verb == 'peek':
             if target:
@@ -2627,6 +2676,7 @@ def main():
             print("The mansion waits. What do you do?")
 
         update_survival(player)
+        runtime.save_game(player, rooms, current)   # autosave; failures are silent
 
 
 if __name__ == "__main__":

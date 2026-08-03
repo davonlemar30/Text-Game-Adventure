@@ -1,3 +1,10 @@
 __pycache__/
 *.pyc
 .DS_Store
+
+# built browser bundle and the cached Pyodide runtime
+dist/
+.cache/
+
+# local save file (the browser build keeps saves in localStorage instead)
+savegame.json

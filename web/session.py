@@ -15,6 +15,7 @@ import time
 import traceback
 
 import game_v6
+import runtime
 
 
 # The real stdout, captured before any redirection, so the server can still
@@ -44,21 +45,6 @@ class _QueueWriter:
         return False
 
 
-class _NoSleep:
-    """Stand-in for the time module with sleep() disabled.
-
-    typewriter() sleeps between characters, which is atmosphere in a terminal
-    and dead air over HTTP — output is delivered a chunk at a time either way.
-    Everything else on the module passes straight through.
-    """
-
-    def sleep(self, seconds):
-        return None
-
-    def __getattr__(self, name):
-        return getattr(time, name)
-
-
 class GameSession:
     """One playthrough, running on its own thread."""
 
@@ -84,7 +70,7 @@ class GameSession:
 
         sys.stdout = self._writer
         builtins.input = self._web_input
-        game_v6.time = _NoSleep()
+        runtime.disable_typewriter_delay()
 
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
@@ -103,7 +89,7 @@ class GameSession:
             sys.stdout = CONSOLE
         if builtins.input is self._web_input and self._real_input is not None:
             builtins.input = self._real_input
-        if isinstance(game_v6.time, _NoSleep) and self._real_time is not None:
+        if isinstance(game_v6.time, runtime.NoSleep) and self._real_time is not None:
             game_v6.time = self._real_time
 
     def _run(self):
@@ -133,8 +119,7 @@ class GameSession:
             self.awaiting_input.clear()
         if line is _ABANDON:
             raise EOFError
-        # Echo it, so the transcript reads like a terminal you typed into.
-        self.output_q.put(line + "\n")
+        # No echo here — the page echoes what you typed, in every build.
         return line
 
     def send_input(self, text):

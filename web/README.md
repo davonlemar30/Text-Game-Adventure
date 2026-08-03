@@ -64,10 +64,11 @@ player. That's the intended use — it's a development and playtesting tool.
 
 - **Local network only.** Do not expose this port to the internet; there is no
   authentication and it runs arbitrary game state for whoever connects.
-- **No save system yet.** State lives in memory. A reloaded page rejoins the run
-  via `/state`, but restarting the server loses it.
-- **GitHub Pages can't host this** — Pages serves static files, and this needs a
-  Python process. A static build would mean running CPython in the browser via
-  Pyodide, which needs the blocking `input()` calls refactored into a
-  non-blocking state machine first (the modularization work already on the
-  roadmap).
+- **One player at a time**, since `sys.stdout` is process-global.
+
+## If you want to play without a computer on the network
+
+Use the browser build instead — see `browser/README.md`. It runs the same game
+entirely in the browser via Pyodide, so it needs no server at all and works from
+a phone anywhere. This build stays useful for development, because it starts
+instantly instead of loading ~6 MB of WebAssembly on every change.
